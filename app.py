@@ -14,13 +14,14 @@ fac = pd.read_csv("model/facilities.csv")
 
 def explain_path(row):
     """Walk the tree for one facility, return plain-word steps."""
+    t = tree.tree_  # the underlying tree struct holds children/feature/threshold
     x = row[FEATURES].values.reshape(1, -1)
     node = 0
     steps = []
-    while tree.children_left[node] != -1:
-        f = FEATURES[tree.feature[node]]
-        thr = tree.threshold[node]
-        val = float(x[0, tree.feature[node]])
+    while t.children_left[node] != -1:
+        f = FEATURES[t.feature[node]]
+        thr = t.threshold[node]
+        val = float(x[0, t.feature[node]])
         go_left = val <= thr
         if f == "log_emissions":
             tonnes = np.expm1(thr)
@@ -40,7 +41,7 @@ def explain_path(row):
             steps.append(
                 f"Reported for {'at most' if go_left else 'more than'} "
                 f"{thr:.0f} years.")
-        node = tree.children_left[node] if go_left else tree.children_right[node]
+        node = t.children_left[node] if go_left else t.children_right[node]
     return steps
 
 
