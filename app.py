@@ -1,4 +1,6 @@
 """Capstone deployment app: CCS/CU priority screening for Alberta facilities."""
+import hashlib
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -156,12 +158,16 @@ with tab_facilities:
                       100_000, int(fac["avg_annual_emissions"].max()),
                       100_000, step=10_000)
 
-    t = fac[(fac["facility_name"].str.contains(q, case=False, na=False))
+    t = fac[(fac["facility_name"].str.contains(q, case=False, na=False, regex=False))
             & (fac["sector"].isin(sectors))
             & (fac["priority"].isin(prios))
             & (fac["avg_annual_emissions"] >= min_e)].copy()
     t["source"] = GHGRP_URL
-    t = t.sort_values("avg_annual_emissions", ascending=False)
+    t = t.sort_values("avg_annual_emissions", ascending=False).reset_index(drop=True)
+    # Key the table to the filter state so a stale row selection is cleared
+    # whenever the filters change, instead of pointing at the wrong row.
+    sig_src = f"{q}|{'/'.join(sorted(sectors))}|{'/'.join(sorted(prios))}|{min_e}"
+    sig = hashlib.md5(sig_src.encode()).hexdigest()[:10]
     st.write(f"{len(t)} facilities")
     event = st.dataframe(
         t[["facility_name", "sector", "avg_annual_emissions", "co2_share",
@@ -176,12 +182,13 @@ with tab_facilities:
             "source": st.column_config.LinkColumn("Data source",
                                                   display_text="ECCC GHGRP"),
         },
+        key=f"fac_table_{sig}",
         on_select="rerun",
         selection_mode="single-row",
         hide_index=True,
         use_container_width=True,
     )
-    rows = event.selection.rows
+    rows = [r for r in event.selection.rows if r < len(t)]
     if rows:
         sel = t.iloc[rows[0]]
         st.divider()
