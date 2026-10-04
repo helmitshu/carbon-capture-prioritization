@@ -706,23 +706,24 @@ with tab_about:
     st.write("The full datasets, so anyone can check the work or redo it from scratch.")
     d1, d2 = st.columns(2)
     with d1:
-        st.download_button("Raw GHGRP extract (CSV)",
+        st.download_button("AMII dataset, as provided (CSV)",
                            _file_bytes("data/Capstone_Dataset.csv"),
                            file_name="Capstone_Dataset.csv",
                            mime="text/csv",
                            use_container_width=True)
-        st.caption("18,772 yearly records as provided, before any cleaning. "
-                   "The original government source is ECCC's Greenhouse Gas "
-                   "Reporting Program [1].")
+        st.caption("18,772 yearly records from the AMII course package, before "
+                   "any cleaning. The underlying source is ECCC's Greenhouse "
+                   "Gas Reporting Program [1].")
     with d2:
         st.download_button("Cleaned dataset (CSV)",
                            _file_bytes("data/Capstone_Dataset_clean.csv"),
                            file_name="Capstone_Dataset_clean.csv",
                            mime="text/csv",
                            use_container_width=True)
-        st.caption("6,999 rows after cleaning: Alberta-only filter, bilingual "
-                   "headers renamed, numeric types fixed, missing gas values "
-                   "set to zero, duplicates removed.")
+        st.caption("6,999 rows after cleaning, the exact input the model "
+                   "trained on: Alberta-only filter, bilingual headers "
+                   "renamed, numeric types fixed, missing gas values set to "
+                   "zero, duplicates removed.")
     references()
 
 with tab_how:
