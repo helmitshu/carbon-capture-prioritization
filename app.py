@@ -28,6 +28,12 @@ yearly = pd.read_csv("data/Capstone_Dataset_clean.csv")
 # shows this next to the rule-based label so the two never get mixed up.
 fac["model_prediction"] = tree.predict(fac[FEATURES].values)
 
+
+@st.cache_data
+def _file_bytes(path):
+    with open(path, "rb") as f:
+        return f.read()
+
 # Per-leaf model reliability, computed once from in-sample fit. Leaves where
 # the tree is frequently wrong get their own alert. (Raw leaf probabilities
 # are distorted by balanced class weights, so the error rate is the honest
@@ -696,6 +702,27 @@ with tab_about:
     st.write("On the Facilities tab, browse the full table. Filter it, click a "
              "row for the full profile, and follow the source link to verify "
              "the numbers yourself.")
+    st.subheader("Download the data")
+    st.write("The full datasets, so anyone can check the work or redo it from scratch.")
+    d1, d2 = st.columns(2)
+    with d1:
+        st.download_button("Raw GHGRP extract (CSV)",
+                           _file_bytes("data/Capstone_Dataset.csv"),
+                           file_name="Capstone_Dataset.csv",
+                           mime="text/csv",
+                           use_container_width=True)
+        st.caption("18,772 yearly records as provided, before any cleaning. "
+                   "The original government source is ECCC's Greenhouse Gas "
+                   "Reporting Program [1].")
+    with d2:
+        st.download_button("Cleaned dataset (CSV)",
+                           _file_bytes("data/Capstone_Dataset_clean.csv"),
+                           file_name="Capstone_Dataset_clean.csv",
+                           mime="text/csv",
+                           use_container_width=True)
+        st.caption("6,999 rows after cleaning: Alberta-only filter, bilingual "
+                   "headers renamed, numeric types fixed, missing gas values "
+                   "set to zero, duplicates removed.")
     references()
 
 with tab_how:
