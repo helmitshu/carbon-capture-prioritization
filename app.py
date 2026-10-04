@@ -352,9 +352,140 @@ def tree_walk(row):
         else:
             q = f"Was it reported for \u2264 {thr:.0f} years?"
             a = f"{val:.0f} years"
-        steps.append({"node": node, "q": q, "a": a, "left": go_left})
+        steps.append({"node": node, "feat": f, "thr": thr, "val": val,
+                      "q": q, "a": a, "left": go_left})
         node = t.children_left[node] if go_left else t.children_right[node]
     return steps, node
+
+
+def _band_thresholds():
+    """All size-split thresholds in the tree, descending (tonnes/yr)."""
+    t = tree.tree_
+    return sorted({float(np.expm1(t.threshold[n])) for n in range(t.node_count)
+                   if t.children_left[n] != -1
+                   and FEATURES[t.feature[n]] == "log_emissions"},
+                  reverse=True)
+
+
+def _size_body(row, group):
+    val = float(np.expm1(row["log_emissions"]))
+    thrs = _band_thresholds()
+    names = ["giant", "large", "medium", "small"]
+    band = names[min(sum(1 for th in thrs if val <= th), 3)]
+    cuts = ", ".join(f"{np.expm1(s['thr']):,.0f}" for s in group)
+    answers = ", ".join("yes" if s["left"] else "no" for s in group)
+    name = display[row["facility_id"]]
+    n = len(group)
+    return (f"The tree's first question is always about size. It tests "
+            f"{'it' if n == 1 else f'{n} cuts'} ({cuts}). At {val:,.0f} "
+            f"tonnes/yr, {name} answers {answers} and lands in the "
+            f"<b>{band}</b> band.")
+
+
+def _sector_body(row, group, leaf):
+    s = group[-1]
+    thr, go_left = s["thr"], s["left"]
+    codes = le.transform(le.classes_)
+    side = le.classes_[codes <= thr] if go_left else le.classes_[codes > thr]
+    shown = ", ".join(side[:3])
+    more = f" and {len(side) - 3} more" if len(side) > 3 else ""
+    pred = _LEAF_PRED[leaf]
+    name = display[row["facility_id"]]
+    return (f"{name} operates in <b>{row['sector']}</b>. The tree lumps "
+            f"sectors into two groups at this split; this one goes with "
+            f"{shown}{more}, on the <b>{pred}</b> side.")
+
+
+def _years_body(row, step):
+    yrs = int(row["years_reported"])
+    name = display[row["facility_id"]]
+    return (f"{name} reported for <b>{yrs} years</b>. In this tree, "
+            f"reporting history never decides a split.")
+
+
+def story_cards(row):
+    """Group the walked nodes into human reason cards.
+
+    Consecutive splits on the same feature (e.g. three size cuts) become
+    one card telling a single reason, instead of three robot questions.
+    Returns (cards, leaf, path_nodes); each card is (title, body_html).
+    """
+    steps, leaf = tree_walk(row)
+    cards = []
+    i = 0
+    while i < len(steps):
+        feat = steps[i]["feat"]
+        j = i
+        while j < len(steps) and steps[j]["feat"] == feat:
+            j += 1
+        group = steps[i:j]
+        if feat == "log_emissions":
+            cards.append(("Size check", _size_body(row, group)))
+        elif feat == "naics_sector_encoded":
+            cards.append(("Sector check", _sector_body(row, group, leaf)))
+        else:
+            cards.append(("Reporting history", _years_body(row, group[0])))
+        i = j
+    path = [s["node"] for s in steps] + [leaf]
+    return cards, leaf, path
+
+
+def reason_card(title, body, i, n):
+    st.markdown(
+        f"<div class='wstep'><div class='wstep-num'>Reason {i} of {n} · {title}</div>"
+        f"<div class='wstep-a'>{body}</div></div>",
+        unsafe_allow_html=True)
+
+
+def _flag_list(row, leaf):
+    """Plain-words list of review flags for the decision box."""
+    flags = []
+    pred = row["model_prediction"]
+    if pred != row["priority"]:
+        flags.append(
+            f"Model vs data: the data says <b>{row['priority']}</b> "
+            f"(CO2 share {row['co2_share']:.0%}) but the model predicted "
+            f"<b>{pred}</b>.")
+    if abs(row["co2_share"] - CO2_CUTOFF) <= BORDERLINE_PTS:
+        flags.append(
+            f"Borderline: CO2 share is within {BORDERLINE_PTS:.0%} of the "
+            f"{CO2_CUTOFF:.0%} cutoff, so a small data revision flips the call.")
+    err = LEAF_ERR.get(leaf, 0.0)
+    if err > HIGH_ERR_THRESHOLD:
+        flags.append(
+            f"Shaky ground: facilities in this corner of the tree were "
+            f"misclassified {err:.0%} of the time in training.")
+    yrs = int(row["years_reported"])
+    if yrs <= 5:
+        flags.append(
+            f"Thin data: only {yrs} years reported, so the average is less stable.")
+    return flags
+
+
+def decision_box(row, leaf):
+    """The payoff: a straight recommendation from the flags."""
+    pred = row["model_prediction"]
+    flags = _flag_list(row, leaf)
+    n = len(flags)
+    if n == 0:
+        title, color = "Decision: clear to proceed", ACCENT
+        body = (f"No flags. The data, the model, and the track record agree: "
+                f"<b>{pred}</b>. Recommended next step: add it to the {pred} "
+                f"review queue. Standard engineering review applies.")
+    elif n == 1:
+        title, color = "Decision: proceed with caution", AMBER
+        body = "One flag needs a human eye before this moves forward."
+    else:
+        title, color = f"Decision: human review required ({n} flags)", RED
+        body = "Do not act on the model output alone. Resolve these flags first."
+    bullets = "".join(f"<li>{f}</li>" for f in flags)
+    st.markdown(
+        f"<div class='dbox' style='border-color:{color};'>"
+        f"<div class='dbox-title' style='color:{color};'>{title}</div>"
+        f"<div class='dbox-body'>{body}</div>"
+        + (f"<ul>{bullets}</ul>" if bullets else "")
+        + "</div>",
+        unsafe_allow_html=True)
 
 
 def draw_tree_diagram(path_nodes=()):
@@ -467,34 +598,41 @@ def pipeline_html():
     return "<div class='pipe'>" + "<div class='parrow'>\u2192</div>".join(cards) + "</div>"
 
 
-def step_card(s, i, row):
-    verdict = "YES" if s["left"] else "NO"
-    direction = "go left" if s["left"] else "go right"
-    st.markdown(
-        f"<div class='wstep'><div class='wstep-num'>Step {i + 1}</div>"
-        f"<div class='wstep-q'>{s['q']}</div>"
-        f"<div class='wstep-a'>{display[row['facility_id']]}: {s['a']} "
-        f"\u2192 <b>{verdict}</b> <span class='wgo'>{direction}</span></div></div>",
-        unsafe_allow_html=True)
-
-
-def leaf_card(leaf, row, steps):
+def leaf_card(leaf, row, path):
     pred = row["model_prediction"]
     err = LEAF_ERR.get(leaf, 0.0)
     n = _LEAF_N.get(leaf, 0)
     priority_badge(pred)
     st.markdown(
         f"<div class='wleaf'><div style='color:{GRAY};font-size:14px;'>"
-        f"Landed on leaf <b style='color:{INK};'>{leaf}</b>: "
-        f"{n} facilities took this path, and the tree got "
+        f"This is the final group: "
+        f"{n} facilities ended here, and the tree got "
         f"<b style='color:{INK};'>{err:.0%}</b> of them wrong in training. "
         f"That is where the alerts below come from.</div></div>",
         unsafe_allow_html=True)
     disagreement_banner(pred, row)
     borderline_banner(row)
     confidence_banner(pred, row)
-    st.pyplot(draw_tree_diagram([s["node"] for s in steps] + [leaf]))
+    decision_box(row, leaf)
+    st.pyplot(draw_tree_diagram(path))
     tree_legend()
+
+
+# Preset walkthrough examples: a clean CCS case vs the trickiest CU case.
+def _walk_flags(r, leaf):
+    return len(_flag_list(r, leaf))
+
+
+_CLEAR_ID, _TRICKY_ID, _best = None, None, -1
+for _i, _r in fac.iterrows():
+    _lf = int(tree.apply(_r[FEATURES].values.reshape(1, -1))[0])
+    _p, _f = _r["model_prediction"], _walk_flags(_r, _lf)
+    if _CLEAR_ID is None and _f == 0 and _p == "CCS Candidate":
+        _CLEAR_ID = _r["facility_id"]
+    if _p == "Potential CU Candidate" and _f > _best:
+        _best, _TRICKY_ID = _f, _r["facility_id"]
+_CLEAR_ID = _CLEAR_ID or fac["facility_id"].iloc[0]
+_TRICKY_ID = _TRICKY_ID or fac["facility_id"].iloc[0]
 
 
 st.markdown(f"""
@@ -520,6 +658,13 @@ font-size:12.5px;color:{GRAY};}}
 .tlegend .sw{{display:inline-block;width:14px;height:14px;border-radius:4px;
 margin-right:6px;vertical-align:-2px;}}
 .tlegend b{{color:{INK};}}
+.dbox{{background:{PANEL_BG};border:1px solid;border-radius:10px;
+padding:14px 16px;margin:12px 0;}}
+.dbox-title{{font-weight:700;font-size:16px;}}
+.dbox-body{{color:{GRAY};font-size:14px;margin-top:6px;}}
+.dbox ul{{color:{GRAY};font-size:14px;margin:8px 0 0;padding-left:20px;}}
+.dbox li{{margin:4px 0;}}
+.dbox b{{color:{INK};}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -569,30 +714,41 @@ with tab_how:
     st.caption("11 nodes, 6 leaves. Every facility starts at the top and "
                "answers its way down.")
     st.subheader("Watch a facility go through it")
+    st.write("Two presets, or pick any facility yourself.")
+    e1, e2 = st.columns(2)
+    with e1:
+        if st.button("Show a clear-cut case", use_container_width=True):
+            st.session_state["walk_pick"] = _CLEAR_ID
+            st.session_state["walk_autorun"] = True
+    with e2:
+        if st.button("Show a tricky case", use_container_width=True):
+            st.session_state["walk_pick"] = _TRICKY_ID
+            st.session_state["walk_autorun"] = True
     wids = sorted(fac["facility_id"].unique(), key=lambda i: display[i].lower())
     wdefault = next((k for k, i in enumerate(wids) if "Alberta-Pacific" in display[i]), 0)
     wchoice = st.selectbox("Facility", wids, index=wdefault, key="walk_pick",
                            format_func=lambda i: display[i])
     wrow = fac[fac["facility_id"] == wchoice].iloc[0]
-    if st.button("\u25b6 Run the flow", type="primary"):
-        wsteps, wleaf = tree_walk(wrow)
-        st.session_state.walk = {"id": wchoice, "steps": wsteps, "leaf": wleaf}
+    run_clicked = st.button("\u25b6 Run the flow", type="primary")
+    if run_clicked or st.session_state.pop("walk_autorun", False):
+        wcards, wleaf, wpath = story_cards(wrow)
+        st.session_state.walk = {"id": wchoice, "cards": wcards,
+                                 "leaf": wleaf, "path": wpath}
         box = st.empty()
-        for i, s in enumerate(wsteps):
+        for i in range(len(wcards)):
             with box.container():
-                for j in range(i):
-                    step_card(wsteps[j], j, wrow)
-                step_card(s, i, wrow)
+                for j in range(i + 1):
+                    reason_card(wcards[j][0], wcards[j][1], j + 1, len(wcards))
             time.sleep(0.8)
         box.empty()
-        for j, s in enumerate(wsteps):
-            step_card(s, j, wrow)
-        leaf_card(wleaf, wrow, wsteps)
+        for j in range(len(wcards)):
+            reason_card(wcards[j][0], wcards[j][1], j + 1, len(wcards))
+        leaf_card(wleaf, wrow, wpath)
     elif st.session_state.get("walk", {}).get("id") == wchoice:
         wk = st.session_state.walk
-        for j, s in enumerate(wk["steps"]):
-            step_card(s, j, wrow)
-        leaf_card(wk["leaf"], wrow, wk["steps"])
+        for j in range(len(wk["cards"])):
+            reason_card(wk["cards"][j][0], wk["cards"][j][1], j + 1, len(wk["cards"]))
+        leaf_card(wk["leaf"], wrow, wk["path"])
 
 with tab_screen:
     st.write("Pick an Alberta industrial facility to see whether it screens as a "
