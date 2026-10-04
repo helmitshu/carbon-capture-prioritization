@@ -1,5 +1,6 @@
 """Capstone deployment app: CCS/CU priority screening for Alberta facilities."""
 import hashlib
+import re
 
 import joblib
 import numpy as np
@@ -8,6 +9,10 @@ import streamlit as st
 
 GHGRP_URL = "https://open.canada.ca/data/en/dataset/a8ba14b7-7f23-462a-bdbb-83b0ef629823"
 TIER_URL = "https://www.alberta.ca/technology-innovation-and-emissions-reduction-regulation"
+INK = "#1d1d1f"
+GRAY = "#6e6e73"
+ACCENT = "#0071e3"
+TRACK = "#e8e8ed"
 
 st.set_page_config(page_title="CCS Priority Screening", layout="wide")
 
@@ -16,6 +21,18 @@ tree, le = bundle["model"], bundle["encoder"]
 FEATURES = bundle["features"]
 fac = pd.read_csv("model/facilities.csv")
 yearly = pd.read_csv("data/Capstone_Dataset_clean.csv")
+
+# Readable labels: a few facilities are filed under a bare ID code,
+# so show the operator name with the code in brackets.
+display = {}
+for _, r in fac.iterrows():
+    nm = str(r["facility_name"])
+    if re.match(r"^[A-Z0-9]{6,}$", nm):
+        y = yearly[yearly["facility_id"] == r["facility_id"]].sort_values("year")
+        tn = y.iloc[-1]["company_trade"] if len(y) and pd.notna(y.iloc[-1]["company_trade"]) else nm
+        display[r["facility_id"]] = f"{tn} ({nm})"
+    else:
+        display[r["facility_id"]] = nm
 
 
 def explain_path(row):
@@ -53,11 +70,67 @@ def explain_path(row):
 
 def priority_badge(priority):
     if priority == "CCS Candidate":
-        st.success("## CCS Candidate")
-        st.write("High concentration CO2 stream. Suited to carbon capture and storage [3].")
+        st.markdown(
+            f"<div style='font-size:42px;font-weight:700;color:{INK};"
+            f"letter-spacing:-0.5px;line-height:1.1;'>CCS Candidate</div>",
+            unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='color:{GRAY};font-size:16px;margin-top:6px;'>"
+            f"High-concentration CO2 stream. Built for capture and storage [3].</div>",
+            unsafe_allow_html=True)
     else:
-        st.info("## Potential CU Candidate")
-        st.write("Mixed gas stream. Better directed toward carbon utilization pathways [3].")
+        st.markdown(
+            f"<div style='font-size:42px;font-weight:700;color:{INK};"
+            f"letter-spacing:-0.5px;line-height:1.1;'>Potential CU Candidate</div>",
+            unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='color:{GRAY};font-size:16px;margin-top:6px;'>"
+            f"Mixed gas stream. Better directed toward carbon utilization [3].</div>",
+            unsafe_allow_html=True)
+
+
+def share_bar(share):
+    """CO2 share against the 85 percent CCS cutoff. The decision, drawn."""
+    pct = share * 100
+    st.markdown(
+        f"<div style='margin:10px 0 2px 0;'>"
+        f"<div style='position:relative;height:10px;background:{TRACK};border-radius:5px;'>"
+        f"<div style='position:absolute;left:0;top:0;height:10px;width:{pct:.1f}%;"
+        f"background:{INK};border-radius:5px;'></div>"
+        f"<div style='position:absolute;left:85%;top:-4px;width:2px;height:18px;"
+        f"background:{ACCENT};'></div>"
+        f"</div>"
+        f"<div style='display:flex;justify-content:space-between;font-size:13px;"
+        f"color:{GRAY};margin-top:8px;'>"
+        f"<span>CO2 share: <b style='color:{INK};'>{pct:.0f}%</b></span>"
+        f"<span style='color:{ACCENT};'>85% CCS cutoff</span>"
+        f"</div></div>",
+        unsafe_allow_html=True)
+
+
+def peer_bar(value, median, sector):
+    """This facility against its sector median. Context for the decision."""
+    mx = max(value, median, 1)
+    st.markdown(
+        f"<div style='margin:14px 0 2px 0;font-size:13px;color:{GRAY};'>"
+        f"Average annual emissions vs {sector} median</div>"
+        f"<div style='margin:6px 0;'>"
+        f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:8px;'>"
+        f"<div style='width:110px;font-size:13px;color:{GRAY};'>This facility</div>"
+        f"<div style='flex:1;height:10px;background:{TRACK};border-radius:5px;'>"
+        f"<div style='height:10px;width:{100*value/mx:.1f}%;background:{INK};"
+        f"border-radius:5px;'></div></div>"
+        f"<div style='width:110px;font-size:13px;color:{INK};text-align:right;'>"
+        f"{value:,.0f} t</div></div>"
+        f"<div style='display:flex;align-items:center;gap:10px;'>"
+        f"<div style='width:110px;font-size:13px;color:{GRAY};'>Sector median</div>"
+        f"<div style='flex:1;height:10px;background:{TRACK};border-radius:5px;'>"
+        f"<div style='height:10px;width:{100*median/mx:.1f}%;background:#aeaeb2;"
+        f"border-radius:5px;'></div></div>"
+        f"<div style='width:110px;font-size:13px;color:{GRAY};text-align:right;'>"
+        f"{median:,.0f} t</div></div>"
+        f"</div>",
+        unsafe_allow_html=True)
 
 
 def facility_profile(row):
@@ -71,7 +144,7 @@ def facility_profile(row):
             return latest[col]
         return "Not reported"
 
-    st.subheader(row["facility_name"])
+    st.subheader(display[row["facility_id"]])
     a, b = st.columns(2)
     with a:
         st.write(f"**Sector:** {row['sector']}")
@@ -121,24 +194,37 @@ with tab_screen:
     st.write("Pick an Alberta industrial facility to see whether it screens as a "
              "carbon capture candidate or a carbon utilization candidate, and why. "
              "Built on public emissions data [1].")
-    names = sorted(fac["facility_name"].unique())
-    choice = st.selectbox("Facility", names, key="screen_pick")
-    row = fac[fac["facility_name"] == choice].iloc[0]
-    left, right = st.columns([1, 1.4])
+    s1, s2 = st.columns(2)
+    with s1:
+        sel_sector = st.selectbox("Sector", ["All sectors"] + sorted(fac["sector"].unique()),
+                                  key="screen_sector")
+    sub = fac if sel_sector == "All sectors" else fac[fac["sector"] == sel_sector]
+    ids = sorted(sub["facility_id"].unique(), key=lambda i: display[i].lower())
+    with s2:
+        choice = st.selectbox("Facility", ids, key="screen_pick",
+                              format_func=lambda i: display[i])
+    st.caption(f"{len(ids)} facilities")
+    row = fac[fac["facility_id"] == choice].iloc[0]
+    x = row[FEATURES].values.reshape(1, -1)
+
+    priority_badge(tree.predict(x)[0])
+    st.divider()
+    left, right = st.columns([1, 1.2])
     with left:
-        st.subheader(choice)
+        st.subheader(display[choice])
         st.write(f"**Sector:** {row['sector']}")
         st.write(f"**Average annual emissions:** {row['avg_annual_emissions']:,.0f} tonnes CO2e")
         st.write(f"**CO2 share of emissions:** {row['co2_share']:.0%}")
         st.write(f"**Years reported:** {int(row['years_reported'])}")
         st.write(f"**TIER band:** {row['emission_band']}")
     with right:
-        st.subheader("Screening result")
-        x = row[FEATURES].values.reshape(1, -1)
-        priority_badge(tree.predict(x)[0])
-        st.subheader("Why this result")
-        for i, s in enumerate(explain_path(row), 1):
-            st.write(f"{i}. {s}")
+        st.subheader("At a glance")
+        share_bar(row["co2_share"])
+        med = fac[fac["sector"] == row["sector"]]["avg_annual_emissions"].median()
+        peer_bar(row["avg_annual_emissions"], med, row["sector"])
+    st.subheader("Why this result")
+    for i, s in enumerate(explain_path(row), 1):
+        st.write(f"{i}. {s}")
     with st.expander("About this model"):
         st.write("Decision Tree classifier, maximum depth 3, trained on 150 "
                  "above-threshold Alberta facilities [2]. Features: log-scaled average "
