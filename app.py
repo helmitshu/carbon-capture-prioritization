@@ -1,8 +1,13 @@
 """Capstone deployment app: CCS/CU priority screening for Alberta facilities."""
 import hashlib
 import re
+import time
 
 import joblib
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.patches import FancyBboxPatch
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -311,7 +316,183 @@ def references():
              "and Carbon Utilization Deployment in Alberta Using Emissions Data. 2026.")
 
 
-tab_about, tab_screen, tab_facilities = st.tabs(["About", "Screening", "Facilities"])
+# ---- How-it-works: visual tree walkthrough ----
+# Leaf predictions from the data itself (every facility in a leaf gets the
+# same prediction by construction).
+_LEAF_PRED, _LEAF_N = {}, {}
+for _lf in set(_leaf_all):
+    _m = _leaf_all == _lf
+    _LEAF_PRED[int(_lf)] = _pred_all[_m][0]
+    _LEAF_N[int(_lf)] = int(_m.sum())
+
+
+def tree_walk(row):
+    """Structured walk from root to leaf for one facility.
+
+    Returns (steps, leaf) where each step has the node id, the question in
+    plain words, the facility's answer, and which branch it took.
+    """
+    t = tree.tree_
+    x = row[FEATURES].values
+    node, steps = 0, []
+    while t.children_left[node] != -1:
+        f = FEATURES[t.feature[node]]
+        thr = t.threshold[node]
+        val = float(x[t.feature[node]])
+        go_left = val <= thr
+        if f == "log_emissions":
+            q = f"Are average emissions \u2264 {np.expm1(thr):,.0f} tonnes/yr?"
+            a = f"{np.expm1(val):,.0f} tonnes/yr"
+        elif f == "naics_sector_encoded":
+            codes = le.transform(le.classes_)
+            side = le.classes_[codes <= thr] if go_left else le.classes_[codes > thr]
+            q = (f"Is the sector code \u2264 {thr:.0f}? "
+                 f"({len(side)} sectors go {'left' if go_left else 'right'})")
+            a = f"{row['sector']} (code {val:.0f})"
+        else:
+            q = f"Was it reported for \u2264 {thr:.0f} years?"
+            a = f"{val:.0f} years"
+        steps.append({"node": node, "q": q, "a": a, "left": go_left})
+        node = t.children_left[node] if go_left else t.children_right[node]
+    return steps, node
+
+
+def draw_tree_diagram(path_nodes=()):
+    """Render the decision tree; nodes on the walked path are highlighted."""
+    t = tree.tree_
+    pos, counter = {}, [0]
+
+    def place(n, d):
+        l, r = t.children_left[n], t.children_right[n]
+        if l == -1:
+            x = counter[0]
+            counter[0] += 1
+        else:
+            place(l, d + 1)
+            place(r, d + 1)
+            x = (pos[l][0] + pos[r][0]) / 2
+        pos[n] = (x, -d)
+
+    place(0, 0)
+    path = set(path_nodes)
+    fig, ax = plt.subplots(figsize=(12, 6.2))
+    fig.patch.set_facecolor(PAGE_BG)
+    ax.set_facecolor(PAGE_BG)
+    for n in range(t.node_count):
+        x, y = pos[n]
+        on = n in path
+        is_leaf = t.children_left[n] == -1
+        if is_leaf:
+            pred = _LEAF_PRED[n]
+            base = RED if pred == "CCS Candidate" else AMBER
+            txt = f"{'CCS' if pred == 'CCS Candidate' else 'CU'}\nn={_LEAF_N[n]}"
+            fc, alpha = base, 0.30 if on else 0.10
+            ec, lw = (base, 2.5) if on else ("#3a4048", 1.0)
+        else:
+            f = FEATURES[t.feature[n]]
+            thr = t.threshold[n]
+            if f == "log_emissions":
+                txt = (f"emissions \u2264\n{np.expm1(thr):,.0f} t/yr\n"
+                       f"n={t.n_node_samples[n]}")
+            elif f == "naics_sector_encoded":
+                txt = f"sector code \u2264 {thr:.0f}\nn={t.n_node_samples[n]}"
+            else:
+                txt = f"years \u2264 {thr:.0f}\nn={t.n_node_samples[n]}"
+            fc, alpha = ("#232830", 1.0) if on else ("#16181d", 0.65)
+            ec, lw = (ACCENT, 2.5) if on else ("#3a4048", 1.0)
+        box = FancyBboxPatch((x - 0.44, y - 0.34), 0.88, 0.68,
+                             boxstyle="round,pad=0.02", facecolor=fc, alpha=alpha,
+                             edgecolor=ec, linewidth=lw)
+        ax.add_patch(box)
+        ax.text(x, y, txt, ha="center", va="center", fontsize=8, color=INK,
+                alpha=1.0 if on else 0.75, weight="bold" if on else "normal")
+        for child, lab in ((t.children_left[n], "yes"), (t.children_right[n], "no")):
+            if child != -1:
+                cx, cy = pos[child]
+                lit = on and child in path
+                ax.annotate("", xy=(cx, cy + 0.34), xytext=(x, y - 0.34),
+                            arrowprops=dict(arrowstyle="->",
+                                            color=ACCENT if lit else "#3a4048",
+                                            lw=2 if lit else 1))
+                ax.text((x + cx) / 2, (y + cy) / 2 + 0.05, lab, fontsize=7,
+                        color=ACCENT if lit else GRAY, ha="center",
+                        bbox=dict(facecolor=PAGE_BG, edgecolor="none", pad=1))
+    ax.set_xlim(-0.9, counter[0] - 0.1)
+    ax.set_ylim(-3.95, 0.75)
+    ax.axis("off")
+    fig.tight_layout()
+    return fig
+
+
+def pipeline_html():
+    """The end-to-end flow as a visual strip of stages."""
+    stages = [
+        ("6,999", "yearly rows reported to ECCC"),
+        ("Clean", "dedupe + standardize"),
+        ("1,199", "facilities after averaging years"),
+        ("150", "above the 100k TIER line"),
+        ("Label", "85% CO\u2082 rule \u2192 130 CCS / 20 CU"),
+        ("3", "features: emissions, sector, years"),
+        ("Tree", "depth 3 \u2192 prediction + alerts"),
+    ]
+    cards = [f"<div class='pstep'><div class='pnum'>{n}</div>"
+             f"<div class='plab'>{l}</div></div>" for n, l in stages]
+    return "<div class='pipe'>" + "<div class='parrow'>\u2192</div>".join(cards) + "</div>"
+
+
+def step_card(s, i, row):
+    verdict = "YES" if s["left"] else "NO"
+    direction = "go left" if s["left"] else "go right"
+    st.markdown(
+        f"<div class='wstep'><div class='wstep-num'>Step {i + 1}</div>"
+        f"<div class='wstep-q'>{s['q']}</div>"
+        f"<div class='wstep-a'>{display[row['facility_id']]}: {s['a']} "
+        f"\u2192 <b>{verdict}</b> <span class='wgo'>{direction}</span></div></div>",
+        unsafe_allow_html=True)
+
+
+def leaf_card(leaf, row, steps):
+    pred = row["model_prediction"]
+    err = LEAF_ERR.get(leaf, 0.0)
+    n = _LEAF_N.get(leaf, 0)
+    priority_badge(pred)
+    st.markdown(
+        f"<div class='wleaf'><div style='color:{GRAY};font-size:14px;'>"
+        f"Landed on leaf <b style='color:{INK};'>{leaf}</b>: "
+        f"{n} facilities took this path, and the tree got "
+        f"<b style='color:{INK};'>{err:.0%}</b> of them wrong in training. "
+        f"That is where the alerts below come from.</div></div>",
+        unsafe_allow_html=True)
+    disagreement_banner(pred, row)
+    borderline_banner(row)
+    confidence_banner(pred, row)
+    st.pyplot(draw_tree_diagram([s["node"] for s in steps] + [leaf]))
+
+
+st.markdown(f"""
+<style>
+.pipe{{display:flex;align-items:stretch;gap:4px;flex-wrap:wrap;margin:10px 0;}}
+.pstep{{background:{PANEL_BG};border:1px solid {TRACK};border-radius:10px;
+padding:10px 12px;min-width:105px;flex:1;}}
+.pnum{{font-size:22px;font-weight:700;color:{ACCENT};}}
+.plab{{font-size:12px;color:{GRAY};margin-top:2px;line-height:1.35;}}
+.parrow{{align-self:center;color:{GRAY};font-size:16px;}}
+.wstep{{background:{PANEL_BG};border-left:3px solid {ACCENT};
+border-radius:0 10px 10px 0;padding:10px 14px;margin:8px 0;}}
+.wstep-num{{font-size:11px;font-weight:700;color:{ACCENT};
+text-transform:uppercase;letter-spacing:0.5px;}}
+.wstep-q{{font-size:15px;font-weight:600;color:{INK};margin-top:2px;}}
+.wstep-a{{font-size:14px;color:{GRAY};margin-top:2px;}}
+.wstep-a b{{color:{INK};}}
+.wgo{{color:{ACCENT};font-weight:700;}}
+.wleaf{{background:{PANEL_BG};border:1px solid {TRACK};
+border-radius:10px;padding:14px 16px;margin:12px 0;}}
+</style>
+""", unsafe_allow_html=True)
+
+
+tab_about, tab_how, tab_screen, tab_facilities = st.tabs(
+    ["About", "How it works", "Screening", "Facilities"])
 
 with tab_about:
     st.subheader("What this is")
@@ -324,18 +505,9 @@ with tab_about:
              "candidates for carbon capture or carbon utilization. What used to "
              "take months of manual review now takes minutes, across every "
              "facility, not just the big names.")
-    st.subheader("How it works")
-    st.write("1. Start with public data. Every figure comes from Environment and "
-             "Climate Change Canada's Greenhouse Gas Reporting Program [1].")
-    st.write("2. Keep the serious emitters. Facilities averaging at least 100,000 "
-             "tonnes of CO2e a year fall under Alberta's TIER regulation [2]. "
-             "That leaves 150.")
-    st.write("3. Sort by stream. Streams that are at least 85% CO2 screen as "
-             "carbon capture candidates. Mixed streams screen as carbon "
-             "utilization candidates [3].")
-    st.write("4. Learn the pattern. A Decision Tree model learns the screening "
-             "rules from the data, so any facility can be screened the same "
-             "way [4].")
+    st.write("The visual version lives on the **How it works** tab: the full "
+             "pipeline as a flow diagram, the tree itself, and an animated "
+             "walkthrough of a facility going through it, question by question.")
     st.subheader("What this is not")
     st.write("This is a triage screen, not an engineering verdict. It does not "
              "replace site studies, cost analysis, or geology. It tells you where "
@@ -347,6 +519,46 @@ with tab_about:
              "row for the full profile, and follow the source link to verify "
              "the numbers yourself.")
     references()
+
+with tab_how:
+    st.subheader("The model, visually")
+    st.write("This is the part that makes it a model and not a filter. Raw data "
+             "flows through a pipeline, and every facility walks down a decision "
+             "tree: three questions, asked in order, each answer choosing a "
+             "branch until the facility lands on a verdict.")
+    st.subheader("The full flow")
+    st.markdown(pipeline_html(), unsafe_allow_html=True)
+    st.caption("Gas shares never enter the features. They define the label, "
+               "so the tree is not allowed to see them.")
+    st.subheader("The tree itself")
+    st.pyplot(draw_tree_diagram())
+    st.caption("11 nodes, 6 leaves. Every facility starts at the top and "
+               "answers its way down.")
+    st.subheader("Watch a facility go through it")
+    wids = sorted(fac["facility_id"].unique(), key=lambda i: display[i].lower())
+    wdefault = next((k for k, i in enumerate(wids) if "Alberta-Pacific" in display[i]), 0)
+    wchoice = st.selectbox("Facility", wids, index=wdefault, key="walk_pick",
+                           format_func=lambda i: display[i])
+    wrow = fac[fac["facility_id"] == wchoice].iloc[0]
+    if st.button("\u25b6 Run the flow", type="primary"):
+        wsteps, wleaf = tree_walk(wrow)
+        st.session_state.walk = {"id": wchoice, "steps": wsteps, "leaf": wleaf}
+        box = st.empty()
+        for i, s in enumerate(wsteps):
+            with box.container():
+                for j in range(i):
+                    step_card(wsteps[j], j, wrow)
+                step_card(s, i, wrow)
+            time.sleep(0.8)
+        box.empty()
+        for j, s in enumerate(wsteps):
+            step_card(s, j, wrow)
+        leaf_card(wleaf, wrow, wsteps)
+    elif st.session_state.get("walk", {}).get("id") == wchoice:
+        wk = st.session_state.walk
+        for j, s in enumerate(wk["steps"]):
+            step_card(s, j, wrow)
+        leaf_card(wk["leaf"], wrow, wk["steps"])
 
 with tab_screen:
     st.write("Pick an Alberta industrial facility to see whether it screens as a "
