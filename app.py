@@ -62,12 +62,21 @@ def priority_badge(priority):
 
 def facility_profile(row):
     """Full profile for one facility row."""
+    # Company and city live in the yearly file, not the facility rollup.
+    y = yearly[yearly["facility_id"] == row["facility_id"]].sort_values("year")
+    latest = y.iloc[-1] if len(y) else None
+
+    def _val(col):
+        if latest is not None and col in y.columns and pd.notna(latest[col]):
+            return latest[col]
+        return "Not reported"
+
     st.subheader(row["facility_name"])
     a, b = st.columns(2)
     with a:
         st.write(f"**Sector:** {row['sector']}")
-        st.write(f"**Company:** {row['company_legal']}")
-        st.write(f"**City:** {row['city']}")
+        st.write(f"**Company:** {_val('company_legal')}")
+        st.write(f"**City:** {_val('city')}")
         st.write(f"**NAICS code:** {int(row['naics_code'])}")
     with b:
         st.write(f"**Average annual emissions:** {row['avg_annual_emissions']:,.0f} tonnes CO2e")
