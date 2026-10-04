@@ -318,7 +318,7 @@ with tab_facilities:
         q = st.text_input("Search by name")
     with f2:
         sectors = st.multiselect("Sector", sorted(fac["sector"].unique()),
-                                 default=sorted(fac["sector"].unique())))
+                                 default=sorted(fac["sector"].unique()))
     with f3:
         prios = st.multiselect("Result", ["CCS Candidate", "Potential CU Candidate"],
                                default=["CCS Candidate", "Potential CU Candidate"])
