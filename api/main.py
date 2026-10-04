@@ -145,4 +145,5 @@ def model_structure() -> dict:
         "children_right": t.children_right.astype(int).tolist(),
         "feature": t.feature.astype(int).tolist(),
         "threshold": t.threshold.astype(float).tolist(),
+        "n_node_samples": t.n_node_samples.astype(int).tolist(),
     }
