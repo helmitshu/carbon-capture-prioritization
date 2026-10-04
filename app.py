@@ -9,10 +9,6 @@ import streamlit as st
 
 GHGRP_URL = "https://open.canada.ca/data/en/dataset/a8ba14b7-7f23-462a-bdbb-83b0ef629823"
 TIER_URL = "https://www.alberta.ca/technology-innovation-and-emissions-reduction-regulation"
-INK = "#1d1d1f"
-GRAY = "#6e6e73"
-ACCENT = "#0071e3"
-TRACK = "#e8e8ed"
 
 st.set_page_config(page_title="CCS Priority Screening", layout="wide")
 
@@ -33,6 +29,51 @@ for _, r in fac.iterrows():
         display[r["facility_id"]] = f"{tn} ({nm})"
     else:
         display[r["facility_id"]] = nm
+
+h1, h2 = st.columns([6, 1])
+with h1:
+    st.title("Carbon Capture Priority Screening")
+with h2:
+    st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
+    st.toggle("Dark mode", key="dark_mode")
+
+dark = st.session_state.get("dark_mode", False)
+INK = "#f5f5f7" if dark else "#1d1d1f"
+GRAY = "#a1a1a6" if dark else "#6e6e73"
+TRACK = "#3a3a3c" if dark else "#e8e8ed"
+RED = "#ff453a" if dark else "#e02020"
+AMBER = "#ffd60a" if dark else "#e8930c"
+ACCENT = "#0a84ff" if dark else "#0071e3"
+PAGE_BG = "#000000" if dark else "#ffffff"
+PANEL_BG = "#1c1c1e" if dark else "#f5f5f7"
+
+if dark:
+    st.markdown("""
+    <style>
+    [data-testid="stAppViewContainer"] { background-color: #000000; }
+    [data-testid="stHeader"] { background-color: transparent; }
+    [data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li,
+    h1, h2, h3, [data-testid="stCaptionContainer"],
+    [data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] label {
+        color: #f5f5f7 !important;
+    }
+    hr { border-color: #3a3a3c !important; }
+    div[data-baseweb="select"] > div, div[data-baseweb="input"] > div {
+        background-color: #1c1c1e !important;
+        border-color: #3a3a3c !important;
+    }
+    div[data-baseweb="select"] span { color: #f5f5f7 !important; }
+    div[data-baseweb="tag"] { background-color: #2c2c2e !important; }
+    div[data-baseweb="tag"] span { color: #f5f5f7 !important; }
+    button[data-baseweb="tab"] p { color: #a1a1a6 !important; }
+    button[data-baseweb="tab"][aria-selected="true"] p { color: #ff453a !important; }
+    [data-testid="stExpander"] { background-color: #1c1c1e !important;
+        border-color: #3a3a3c !important; }
+    [data-testid="stExpander"] summary p { color: #f5f5f7 !important; }
+    [data-testid="stDataFrame"] { background-color: #1c1c1e; }
+    section[data-testid="stSlider"] p { color: #f5f5f7 !important; }
+    </style>
+    """, unsafe_allow_html=True)
 
 
 def explain_path(row):
@@ -69,20 +110,17 @@ def explain_path(row):
 
 
 def priority_badge(priority):
+    color = RED if priority == "CCS Candidate" else AMBER
+    st.markdown(
+        f"<div style='font-size:42px;font-weight:700;color:{color};"
+        f"letter-spacing:-0.5px;line-height:1.1;'>{priority}</div>",
+        unsafe_allow_html=True)
     if priority == "CCS Candidate":
-        st.markdown(
-            f"<div style='font-size:42px;font-weight:700;color:{INK};"
-            f"letter-spacing:-0.5px;line-height:1.1;'>CCS Candidate</div>",
-            unsafe_allow_html=True)
         st.markdown(
             f"<div style='color:{GRAY};font-size:16px;margin-top:6px;'>"
             f"High-concentration CO2 stream. Built for capture and storage [3].</div>",
             unsafe_allow_html=True)
     else:
-        st.markdown(
-            f"<div style='font-size:42px;font-weight:700;color:{INK};"
-            f"letter-spacing:-0.5px;line-height:1.1;'>Potential CU Candidate</div>",
-            unsafe_allow_html=True)
         st.markdown(
             f"<div style='color:{GRAY};font-size:16px;margin-top:6px;'>"
             f"Mixed gas stream. Better directed toward carbon utilization [3].</div>",
@@ -92,11 +130,12 @@ def priority_badge(priority):
 def share_bar(share):
     """CO2 share against the 85 percent CCS cutoff. The decision, drawn."""
     pct = share * 100
+    color = RED if share >= 0.85 else AMBER
     st.markdown(
         f"<div style='margin:10px 0 2px 0;'>"
         f"<div style='position:relative;height:10px;background:{TRACK};border-radius:5px;'>"
         f"<div style='position:absolute;left:0;top:0;height:10px;width:{pct:.1f}%;"
-        f"background:{INK};border-radius:5px;'></div>"
+        f"background:{color};border-radius:5px;'></div>"
         f"<div style='position:absolute;left:85%;top:-4px;width:2px;height:18px;"
         f"background:{ACCENT};'></div>"
         f"</div>"
@@ -125,7 +164,7 @@ def peer_bar(value, median, sector):
         f"<div style='display:flex;align-items:center;gap:10px;'>"
         f"<div style='width:110px;font-size:13px;color:{GRAY};'>Sector median</div>"
         f"<div style='flex:1;height:10px;background:{TRACK};border-radius:5px;'>"
-        f"<div style='height:10px;width:{100*median/mx:.1f}%;background:#aeaeb2;"
+        f"<div style='height:10px;width:{100*median/mx:.1f}%;background:{GRAY};"
         f"border-radius:5px;'></div></div>"
         f"<div style='width:110px;font-size:13px;color:{GRAY};text-align:right;'>"
         f"{median:,.0f} t</div></div>"
@@ -187,8 +226,42 @@ def references():
              "and Carbon Utilization Deployment in Alberta Using Emissions Data. 2026.")
 
 
-st.title("Carbon Capture Priority Screening")
-tab_screen, tab_facilities = st.tabs(["Screening", "Facilities"])
+tab_about, tab_screen, tab_facilities = st.tabs(["About", "Screening", "Facilities"])
+
+with tab_about:
+    st.subheader("What this is")
+    st.write("Alberta releases about 270 megatonnes of CO2 every year. Carbon "
+             "capture can trap it before it reaches the air, but it is expensive "
+             "and cannot go everywhere. The real question is simple. Where should "
+             "it go first.")
+    st.write("This tool answers that as a first pass. It reads public emissions "
+             "data for 1,199 Alberta industrial facilities and screens the best "
+             "candidates for carbon capture or carbon utilization. What used to "
+             "take months of manual review now takes minutes, across every "
+             "facility, not just the big names.")
+    st.subheader("How it works")
+    st.write("1. Start with public data. Every figure comes from Environment and "
+             "Climate Change Canada's Greenhouse Gas Reporting Program [1].")
+    st.write("2. Keep the serious emitters. Facilities averaging at least 100,000 "
+             "tonnes of CO2e a year fall under Alberta's TIER regulation [2]. "
+             "That leaves 150.")
+    st.write("3. Sort by stream. Streams that are at least 85% CO2 screen as "
+             "carbon capture candidates. Mixed streams screen as carbon "
+             "utilization candidates [3].")
+    st.write("4. Learn the pattern. A Decision Tree model learns the screening "
+             "rules from the data, so any facility can be screened the same "
+             "way [4].")
+    st.subheader("What this is not")
+    st.write("This is a triage screen, not an engineering verdict. It does not "
+             "replace site studies, cost analysis, or geology. It tells you where "
+             "the expensive reviews should start.")
+    st.subheader("How to use it")
+    st.write("On the Screening tab, pick a sector, pick a facility, and see its "
+             "result with the reasons in plain words.")
+    st.write("On the Facilities tab, browse the full table. Filter it, click a "
+             "row for the full profile, and follow the source link to verify "
+             "the numbers yourself.")
+    references()
 
 with tab_screen:
     st.write("Pick an Alberta industrial facility to see whether it screens as a "
@@ -245,7 +318,7 @@ with tab_facilities:
         q = st.text_input("Search by name")
     with f2:
         sectors = st.multiselect("Sector", sorted(fac["sector"].unique()),
-                                 default=sorted(fac["sector"].unique()))
+                                 default=sorted(fac["sector"].unique())))
     with f3:
         prios = st.multiselect("Result", ["CCS Candidate", "Potential CU Candidate"],
                                default=["CCS Candidate", "Potential CU Candidate"])
@@ -288,5 +361,3 @@ with tab_facilities:
         sel = t.iloc[rows[0]]
         st.divider()
         facility_profile(fac[fac["facility_id"] == sel["facility_id"]].iloc[0])
-
-    references()
