@@ -778,10 +778,18 @@ with tab_about:
 
 with tab_how:
     st.subheader("The model, visually")
-    st.write("Every facility walks down a decision tree. Three questions, asked "
-             "in order, and each answer picks a branch until the facility lands "
-             "on a verdict. The tree learned these questions from 150 Alberta "
-             "facilities, so the branches are the data's own logic, not someone's opinion.")
+    st.write("Every facility walks down a decision tree. Here are the questions, in order.\n\n"
+             "1. Are average emissions at or below 271,000 tonnes a year? Every facility gets this one. "
+             "The tree tested every possible cutoff on all 150 facilities and this one split CCS candidates "
+             "from CU candidates most cleanly.\n"
+             "2. The next question depends on the answer. Smaller emitters get a finer size question, "
+             "at or below 186,000 tonnes a year. Larger emitters get a sector question, which groups industries "
+             "by NAICS code and asks which side the facility lands on.\n"
+             "3. The last question is either one more size cut, at or below 125,000 tonnes a year, or one more "
+             "sector grouping. Then the facility lands on a verdict. The biggest emitters only need two questions "
+             "to get there.\n\n"
+             "Nobody wrote these questions. The tree tried every feature and every cutoff against the 150 labeled "
+             "facilities and kept the splits that separated the two groups best. That is what training means here.")
     st.subheader("The full flow")
     st.markdown(pipeline_html(), unsafe_allow_html=True)
     st.caption("Gas shares never enter the features. They define the label, "
