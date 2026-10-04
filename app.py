@@ -127,6 +127,30 @@ def priority_badge(priority):
             unsafe_allow_html=True)
 
 
+def disagreement_banner(pred, row):
+    """Flag when the model prediction disagrees with the rule-based label.
+
+    The label comes straight from the data (CO2 share vs the 85% cutoff).
+    The model never sees CO2 share, so small facilities with pure CO2
+    streams can fool it. Surface the disagreement instead of hiding it.
+    """
+    rule = row["priority"]
+    if pred == rule:
+        return
+    st.markdown(
+        f"<div style='background:{PANEL_BG};border:1px solid {AMBER};"
+        f"border-radius:10px;padding:12px 16px;margin:12px 0;'>"
+        f"<div style='font-weight:700;color:{AMBER};font-size:15px;'>"
+        f"Model and rule disagree. Needs human review.</div>"
+        f"<div style='color:{GRAY};font-size:14px;margin-top:4px;'>"
+        f"The data says <b style='color:{INK};'>{rule}</b> "
+        f"(CO2 share {row['co2_share']:.0%}, cutoff 85%), but the model "
+        f"predicted <b style='color:{INK};'>{pred}</b>. The tree never sees "
+        f"the CO2 share directly, so smaller facilities with pure CO2 "
+        f"streams can be misclassified.</div></div>",
+        unsafe_allow_html=True)
+
+
 def share_bar(share):
     """CO2 share against the 85 percent CCS cutoff. The decision, drawn."""
     pct = share * 100
@@ -202,7 +226,9 @@ def facility_profile(row):
     st.line_chart(hist.set_index("year")["total_emissions"])
     x = row[FEATURES].values.reshape(1, -1)
     st.write("**Screening result**")
-    priority_badge(tree.predict(x)[0])
+    pred = tree.predict(x)[0]
+    priority_badge(pred)
+    disagreement_banner(pred, row)
     st.write("**Why this result**")
     for i, s in enumerate(explain_path(row), 1):
         st.write(f"{i}. {s}")
@@ -281,6 +307,7 @@ with tab_screen:
     x = row[FEATURES].values.reshape(1, -1)
 
     priority_badge(tree.predict(x)[0])
+    disagreement_banner(tree.predict(x)[0], row)
     st.divider()
     left, right = st.columns([1, 1.2])
     with left:
@@ -303,7 +330,9 @@ with tab_screen:
                  "above-threshold Alberta facilities [2]. Features: log-scaled average "
                  "emissions, encoded industry sector, years reported. Gas shares were "
                  "excluded from features to avoid label leakage. Evaluated with "
-                 "5-fold stratified cross validation: accuracy 0.75, macro F1 0.62.")
+                 "5-fold stratified cross validation: accuracy 0.75, macro F1 0.62. "
+                 "CU precision is 0.30, so most CU predictions are actually CCS "
+                 "facilities: treat every CU flag as needing human review.")
         st.write("Data: Environment and Climate Change Canada, Greenhouse Gas "
                  "Reporting Program, public dataset 2004 to 2023 [1].")
 
