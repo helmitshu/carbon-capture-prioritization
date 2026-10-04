@@ -18,6 +18,21 @@ FEATURES = bundle["features"]
 fac = pd.read_csv("model/facilities.csv")
 yearly = pd.read_csv("data/Capstone_Dataset_clean.csv")
 
+# Per-leaf model reliability, computed once from in-sample fit. Leaves where
+# the tree is frequently wrong get their own alert. (Raw leaf probabilities
+# are distorted by balanced class weights, so the error rate is the honest
+# signal, not the probability.)
+_Xall = fac[FEATURES].values
+_leaf_all = tree.apply(_Xall)
+_pred_all = tree.predict(_Xall)
+_true_all = fac["priority"].values
+LEAF_ERR = {}
+for lf in set(_leaf_all):
+    m = _leaf_all == lf
+    LEAF_ERR[int(lf)] = float((_pred_all[m] != _true_all[m]).mean())
+HIGH_ERR_THRESHOLD = 0.25
+BORDERLINE_PTS = 0.03  # CO2 share within 3 points of the 85% cutoff
+
 # Readable labels: a few facilities are filed under a bare ID code,
 # so show the operator name with the code in brackets.
 display = {}
@@ -151,6 +166,44 @@ def disagreement_banner(pred, row):
         unsafe_allow_html=True)
 
 
+def _alert_box(title, body):
+    st.markdown(
+        f"<div style='background:{PANEL_BG};border:1px solid {AMBER};"
+        f"border-radius:10px;padding:12px 16px;margin:12px 0;'>"
+        f"<div style='font-weight:700;color:{AMBER};font-size:15px;'>"
+        f"{title}</div>"
+        f"<div style='color:{GRAY};font-size:14px;margin-top:4px;'>"
+        f"{body}</div></div>",
+        unsafe_allow_html=True)
+
+
+def borderline_banner(row):
+    """Flag facilities whose CO2 share sits near the arbitrary 85% cutoff."""
+    gap = abs(row["co2_share"] - 0.85)
+    if gap > BORDERLINE_PTS:
+        return
+    _alert_box(
+        "Borderline call. Needs human review.",
+        f"CO2 share is {row['co2_share']:.0%}, within "
+        f"{BORDERLINE_PTS:.0%} of the 85% cutoff. The 85% line is a "
+        f"stipulated threshold, not a physical boundary: a small data "
+        f"revision would flip this verdict.")
+
+
+def confidence_banner(pred, row):
+    """Flag predictions from tree leaves where the model is often wrong."""
+    lf = int(tree.apply(row[FEATURES].values.reshape(1, -1))[0])
+    err = LEAF_ERR.get(lf, 0.0)
+    if err <= HIGH_ERR_THRESHOLD:
+        return
+    _alert_box(
+        "Low model confidence. Needs human review.",
+        f"The model predicted <b style='color:{INK};'>{pred}</b>, but "
+        f"facilities landing in this part of the tree were misclassified "
+        f"{err:.0%} of the time in training. Treat the prediction with "
+        f"extra skepticism and lean on the data.")
+
+
 def share_bar(share):
     """CO2 share against the 85 percent CCS cutoff. The decision, drawn."""
     pct = share * 100
@@ -229,6 +282,8 @@ def facility_profile(row):
     pred = tree.predict(x)[0]
     priority_badge(pred)
     disagreement_banner(pred, row)
+    borderline_banner(row)
+    confidence_banner(pred, row)
     st.write("**Why this result**")
     for i, s in enumerate(explain_path(row), 1):
         st.write(f"{i}. {s}")
@@ -306,8 +361,11 @@ with tab_screen:
     row = fac[fac["facility_id"] == choice].iloc[0]
     x = row[FEATURES].values.reshape(1, -1)
 
-    priority_badge(tree.predict(x)[0])
-    disagreement_banner(tree.predict(x)[0], row)
+    pred = tree.predict(x)[0]
+    priority_badge(pred)
+    disagreement_banner(pred, row)
+    borderline_banner(row)
+    confidence_banner(pred, row)
     st.divider()
     left, right = st.columns([1, 1.2])
     with left:
@@ -316,12 +374,19 @@ with tab_screen:
         st.write(f"**Average annual emissions:** {row['avg_annual_emissions']:,.0f} tonnes CO2e")
         st.write(f"**CO2 share of emissions:** {row['co2_share']:.0%}")
         st.write(f"**Years reported:** {int(row['years_reported'])}")
+        if int(row['years_reported']) <= 5:
+            st.caption(f"Only {int(row['years_reported'])} years of data: "
+                       f"averages are less stable.")
         st.write(f"**TIER band:** {row['emission_band']}")
     with right:
         st.subheader("At a glance")
         share_bar(row["co2_share"])
-        med = fac[fac["sector"] == row["sector"]]["avg_annual_emissions"].median()
-        peer_bar(row["avg_annual_emissions"], med, row["sector"])
+        peers = fac[fac["sector"] == row["sector"]]
+        if len(peers) <= 1:
+            st.caption("Only facility in this sector: no peer comparison available.")
+        else:
+            peer_bar(row["avg_annual_emissions"],
+                     peers["avg_annual_emissions"].median(), row["sector"])
     st.subheader("Why this result")
     for i, s in enumerate(explain_path(row), 1):
         st.write(f"{i}. {s}")
