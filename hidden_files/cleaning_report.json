@@ -1,0 +1,96 @@
+{
+  "order_of_operations": [
+    "inspect",
+    "rename",
+    "alberta_filter",
+    "missing_values_first",
+    "duplicate_checks",
+    "type_coercion",
+    "valid_emissions_filter",
+    "temporal_check"
+  ],
+  "raw_shape": [
+    18772,
+    17
+  ],
+  "raw_missing_by_column": {
+    "Facility City or District or Municipality / Ville ou District ou Municipalit\u00e9 de l'installation": 1866,
+    "Facility Province or Territory / Province ou territoire de l'installation": 1,
+    "Facility NPRI ID / Num\u00e9ro d'identification de l'INRP": 114,
+    "Reporting Company Trade Name / Nom commercial de la soci\u00e9t\u00e9 d\u00e9clarante": 8296,
+    "CH4 (tonnes)": 164,
+    "N2O (tonnes)": 263
+  },
+  "alberta_rows": 6999,
+  "missing_value_policy": {
+    "ch4_t_zero_filled_with_ch4_co2e_present": 11,
+    "n2o_t_zero_filled_with_n2o_co2e_present": 20,
+    "gas_tonnes_unresolvable_dropped": 0,
+    "trade_name_missing_before": 3359,
+    "trade_name_filled_by_ffill": 596,
+    "trade_name_filled_by_legal_name": 2763,
+    "trade_name_still_missing": 0,
+    "city_filled_unknown": 1299
+  },
+  "exact_duplicate_rows": 0,
+  "facility_year_duplicate_rows": 0,
+  "type_coercion": {
+    "co2": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "ch4_t": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "ch4_co2e": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "n2o_t": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "n2o_co2e": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "total_emissions": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "year": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "naics_code": {
+      "coerced_values": 0,
+      "examples": []
+    }
+  },
+  "zero_or_null_total_emissions_dropped": 0,
+  "rows_by_year": {
+    "2004": 98,
+    "2005": 99,
+    "2006": 102,
+    "2007": 104,
+    "2008": 106,
+    "2009": 161,
+    "2010": 165,
+    "2011": 162,
+    "2012": 164,
+    "2013": 171,
+    "2014": 185,
+    "2015": 182,
+    "2016": 203,
+    "2017": 661,
+    "2018": 728,
+    "2019": 721,
+    "2020": 718,
+    "2021": 725,
+    "2022": 762,
+    "2023": 782
+  },
+  "temporal_decision": "Kept all years 2004-2023. Early years (2004-2008) are thinner (~100 rows/yr vs ~700+/yr from 2017) due to reporting-threshold history, but their rows are complete on model-critical columns, so dropping them would destroy valid data. Documented, not dropped.",
+  "critical_columns_missing_after_cleaning": 0
+}
