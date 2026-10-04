@@ -1,0 +1,69 @@
+{
+  "version": "v1",
+  "stage": "production",
+  "model_type": "DecisionTreeClassifier (scikit-learn)",
+  "params": {
+    "max_depth": 3,
+    "min_samples_leaf": 2,
+    "min_samples_split": 6,
+    "class_weight": "balanced",
+    "random_state": 42
+  },
+  "features": [
+    "log_emissions",
+    "naics_sector_encoded",
+    "years_reported"
+  ],
+  "labels": [
+    "CCS Candidate",
+    "Potential CU Candidate"
+  ],
+  "label_rule": "co2_share >= 0.85 -> CCS Candidate else Potential CU Candidate (gas shares excluded from features: label leakage)",
+  "metrics": {
+    "protocol": "StratifiedKFold(n_splits=5, shuffle=True, random_state=42), cross_val_predict",
+    "accuracy": 0.7467,
+    "macro_avg": {
+      "precision": 0.6147,
+      "recall": 0.7058,
+      "f1-score": 0.6226
+    },
+    "per_class": {
+      "CCS Candidate": {
+        "precision": 0.934,
+        "recall": 0.7615,
+        "f1": 0.839,
+        "support": 130
+      },
+      "Potential CU Candidate": {
+        "precision": 0.2955,
+        "recall": 0.65,
+        "f1": 0.4062,
+        "support": 20
+      }
+    }
+  },
+  "data": {
+    "training_file": "data/facility_labeled.csv",
+    "training_sha256": "2339a28dfa6bb53255c4c46f58d0115543f9541488d37959b4717154116c51be",
+    "source_clean_file": "data/Capstone_Dataset_clean.csv",
+    "source_clean_sha256": "085b2554474c0359e2053bdb45e7279c231cabbeecb418228646ce3cadd02c68",
+    "n_facilities": 150,
+    "class_balance": {
+      "CCS Candidate": 130,
+      "Potential CU Candidate": 20
+    }
+  },
+  "artifact": {
+    "file": "registry/model_v1.pkl",
+    "sha256": "8c4f3e1b158c4e0407cdb9eca8ac8ad5dc1058e045ed450e428da2c28ae628e3"
+  },
+  "training_script": "scripts/04_save_model.py",
+  "training_date": "2026-10-03",
+  "registered_date": "2026-10-04",
+  "lesson_spec": "AMII AI Pathways Technical Track, Capstone Project",
+  "limitations": [
+    "CU class precision is low (~0.30): most 'Potential CU' predictions are actually CCS. See the disagreement banner.",
+    "Model errors concentrate in smaller true-CCS facilities.",
+    "Single decision tree chosen for interpretability, not maximum performance."
+  ]
+}
