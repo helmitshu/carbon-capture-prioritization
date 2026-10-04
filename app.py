@@ -518,7 +518,7 @@ def draw_tree_diagram(path_nodes=()):
     place(0, 0)
     path = set(path_nodes)
     edge_dim = "#3a4048" if dark else "#c9ccd1"
-    fig, ax = plt.subplots(figsize=(12, 6.2))
+    fig, ax = plt.subplots(figsize=(10, 6))
     fig.patch.set_facecolor(PAGE_BG)
     ax.set_facecolor(PAGE_BG)
     for n in range(t.node_count):
@@ -553,7 +553,7 @@ def draw_tree_diagram(path_nodes=()):
                              boxstyle="round,pad=0.02", facecolor=fc, alpha=alpha,
                              edgecolor=ec, linewidth=lw)
         ax.add_patch(box)
-        ax.text(x, y, txt, ha="center", va="center", fontsize=8, color=INK,
+        ax.text(x, y, txt, ha="center", va="center", fontsize=9, color=INK,
                 alpha=1.0 if on else 0.75, weight="bold" if on else "normal")
         for child, lab in ((t.children_left[n], "yes"), (t.children_right[n], "no")):
             if child != -1:
@@ -563,7 +563,7 @@ def draw_tree_diagram(path_nodes=()):
                             arrowprops=dict(arrowstyle="->",
                                             color=ACCENT if lit else edge_dim,
                                             lw=2 if lit else 1))
-                ax.text((x + cx) / 2, (y + cy) / 2 + 0.05, lab, fontsize=7,
+                ax.text((x + cx) / 2, (y + cy) / 2 + 0.05, lab, fontsize=8,
                         color=ACCENT if lit else GRAY, ha="center",
                         bbox=dict(facecolor=PAGE_BG, edgecolor="none", pad=1))
     ax.set_xlim(-0.9, counter[0] - 0.1)
@@ -648,6 +648,7 @@ _TRICKY_ID = _TRICKY_ID or fac["facility_id"].iloc[0]
 
 st.markdown(f"""
 <style>
+X  
 .pipe{{display:flex;align-items:stretch;gap:4px;flex-wrap:wrap;margin:10px 0;}}
 .pstep{{background:{PANEL_BG};border:1px solid {TRACK};border-radius:10px;
 padding:10px 12px;min-width:105px;flex:1;}}
@@ -658,13 +659,14 @@ padding:10px 12px;min-width:105px;flex:1;}}
 border-radius:0 10px 10px 0;padding:10px 14px;margin:8px 0;}}
 .wstep-num{{font-size:11px;font-weight:700;color:{ACCENT};
 text-transform:uppercase;letter-spacing:0.5px;}}
+
 .wstep-q{{font-size:15px;font-weight:600;color:{INK};margin-top:2px;}}
 .wstep-a{{font-size:14px;color:{GRAY};margin-top:2px;}}
 .wstep-a b{{color:{INK};}}
 .wgo{{color:{ACCENT};font-weight:700;}}
 .wleaf{{background:{PANEL_BG};border:1px solid {TRACK};
 border-radius:10px;padding:14px 16px;margin:12px 0;}}
-.tlegend{{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 4px;
+
 font-size:12.5px;color:{GRAY};}}
 .tlegend .sw{{display:inline-block;width:14px;height:14px;border-radius:4px;
 margin-right:6px;vertical-align:-2px;}}
@@ -676,6 +678,19 @@ padding:14px 16px;margin:12px 0;}}
 .dbox ul{{color:{GRAY};font-size:14px;margin:8px 0 0;padding-left:20px;}}
 .dbox li{{margin:4px 0;}}
 .dbox b{{color:{INK};}}
+@media (max-width: 640px) {{
+  [data-testid="stHorizontalBlock"]  {{ flex-wrap: wrap !important; }}
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] {{
+        flex: 1 1 100% !important; min-width: 100% !important; }}
+          .block-container {{ padding-left: 1rem !important;
+              padding-right: 1rem !important; }} }}
+               }
+              }}
+              }}
+              }}
+              }}
+  X  
+
 </style>
 """, unsafe_allow_html=True)
 
