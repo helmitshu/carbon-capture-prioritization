@@ -724,6 +724,35 @@ with tab_about:
                    "trained on: Alberta-only filter, bilingual headers "
                    "renamed, numeric types fixed, missing gas values set to "
                    "zero, duplicates removed.")
+    st.subheader("How the data was cleaned")
+    st.write("**How messy it was.** The file arrived with 18,772 yearly records "
+             "and 17 columns, every header written in English and French, some "
+             "over 100 characters long. 10,704 cells were empty, worst in "
+             "company trade names (8,296 missing) and cities (1,866). It "
+             "covered all of Canada across 20 years of changing reporting "
+             "rules, with 164 rows missing methane figures and 263 missing "
+             "nitrous oxide. The good news: zero duplicated rows and zero "
+             "zero-emission rows.")
+    st.write("**What we did.** Renamed all 17 bilingual headers to short "
+             "English names. Kept Alberta only, which cut the file to 6,999 "
+             "rows. Forced 8 columns to numeric types so bad values could not "
+             "sneak through. Filled missing gas figures with zero on the "
+             "documented assumption that not reported means none reported, "
+             "set missing cities to Unknown, and filled trade names from "
+             "legal names. Removed duplicates and zero-emission rows (none "
+             "were found, the check stays as a guard). Grouped by GHGRP "
+             "facility ID, not by name, because 232 facilities were renamed "
+             "across the years.")
+    st.write("**The result.** 6,999 clean rows, 1,199 facilities, years 2004 "
+             "to 2023, zero missing values in every column the model touches.")
+    st.write("**Limitations.** Four honest ones. Missing gas set to zero is "
+             "an assumption, and it slightly inflates CO2 share for those "
+             "rows. The 2004 reporting methodology differs (in 60 rows the "
+             "reported total does not match the sum of the gases), but "
+             "rerunning the screen without those rows changes no outcome. "
+             "This covers Alberta only. And the starting file is the AMII "
+             "course extract, not ECCC's raw publication, so the true "
+             "original lives with the government source [1].")
     references()
 
 with tab_how:
