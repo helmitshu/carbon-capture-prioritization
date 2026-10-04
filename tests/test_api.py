@@ -123,6 +123,8 @@ def test_remote_client_matches_local():
         assert (leaves == bundle["model"].apply(
             fac[FEATURES].to_numpy())).all()
         assert list(le.classes_) == list(bundle["encoder"].classes_)
+        assert (tree.tree_.n_node_samples
+                == bundle["model"].tree_.n_node_samples).all()
         assert (le.transform(["Conventional Oil and Gas Extraction"])
                 == bundle["encoder"].transform(
                     ["Conventional Oil and Gas Extraction"])).all()
