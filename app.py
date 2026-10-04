@@ -375,6 +375,7 @@ def draw_tree_diagram(path_nodes=()):
 
     place(0, 0)
     path = set(path_nodes)
+    edge_dim = "#3a4048" if dark else "#c9ccd1"
     fig, ax = plt.subplots(figsize=(12, 6.2))
     fig.patch.set_facecolor(PAGE_BG)
     ax.set_facecolor(PAGE_BG)
@@ -386,8 +387,11 @@ def draw_tree_diagram(path_nodes=()):
             pred = _LEAF_PRED[n]
             base = RED if pred == "CCS Candidate" else AMBER
             txt = f"{'CCS' if pred == 'CCS Candidate' else 'CU'}\nn={_LEAF_N[n]}"
-            fc, alpha = base, 0.30 if on else 0.10
-            ec, lw = (base, 2.5) if on else ("#3a4048", 1.0)
+            if dark:
+                fc, alpha = base, 0.30 if on else 0.12
+            else:
+                fc, alpha = base, 0.16 if on else 0.08
+            ec, lw = (base, 2.5) if on else (base, 1.2)
         else:
             f = FEATURES[t.feature[n]]
             thr = t.threshold[n]
@@ -398,8 +402,11 @@ def draw_tree_diagram(path_nodes=()):
                 txt = f"sector code \u2264 {thr:.0f}\nn={t.n_node_samples[n]}"
             else:
                 txt = f"years \u2264 {thr:.0f}\nn={t.n_node_samples[n]}"
-            fc, alpha = ("#232830", 1.0) if on else ("#16181d", 0.65)
-            ec, lw = (ACCENT, 2.5) if on else ("#3a4048", 1.0)
+            if dark:
+                fc, alpha = ("#232830", 1.0) if on else ("#16181d", 0.65)
+            else:
+                fc, alpha = ("#e8f1fd", 1.0) if on else ("#ffffff", 1.0)
+            ec, lw = (ACCENT, 2.5) if on else (edge_dim, 1.2)
         box = FancyBboxPatch((x - 0.44, y - 0.34), 0.88, 0.68,
                              boxstyle="round,pad=0.02", facecolor=fc, alpha=alpha,
                              edgecolor=ec, linewidth=lw)
@@ -412,7 +419,7 @@ def draw_tree_diagram(path_nodes=()):
                 lit = on and child in path
                 ax.annotate("", xy=(cx, cy + 0.34), xytext=(x, y - 0.34),
                             arrowprops=dict(arrowstyle="->",
-                                            color=ACCENT if lit else "#3a4048",
+                                            color=ACCENT if lit else edge_dim,
                                             lw=2 if lit else 1))
                 ax.text((x + cx) / 2, (y + cy) / 2 + 0.05, lab, fontsize=7,
                         color=ACCENT if lit else GRAY, ha="center",
@@ -422,6 +429,26 @@ def draw_tree_diagram(path_nodes=()):
     ax.axis("off")
     fig.tight_layout()
     return fig
+
+
+def tree_legend():
+    """Plain-words key for the tree diagram labels."""
+    q_bd = "#3a4048" if dark else "#c9ccd1"
+    st.markdown(
+        f"<div class='tlegend'>"
+        f"<span><i class='sw' style='background:{PANEL_BG};"
+        f"border:2px solid {ACCENT}'></i>path this facility took</span>"
+        f"<span><i class='sw' style='background:{RED}33;"
+        f"border:1px solid {RED}'></i><b>CCS Candidate</b>: pure CO2 stream, "
+        f"suited to storage</span>"
+        f"<span><i class='sw' style='background:{AMBER}33;"
+        f"border:1px solid {AMBER}'></i><b>Potential CU Candidate</b>: mixed "
+        f"stream, suited to utilization</span>"
+        f"<span><i class='sw' style='background:{PANEL_BG};"
+        f"border:1px solid {q_bd}'></i>a question the tree asks</span>"
+        f"<span><b>n</b> = facilities that ended in that box</span>"
+        f"</div>",
+        unsafe_allow_html=True)
 
 
 def pipeline_html():
@@ -467,6 +494,7 @@ def leaf_card(leaf, row, steps):
     borderline_banner(row)
     confidence_banner(pred, row)
     st.pyplot(draw_tree_diagram([s["node"] for s in steps] + [leaf]))
+    tree_legend()
 
 
 st.markdown(f"""
@@ -487,6 +515,11 @@ text-transform:uppercase;letter-spacing:0.5px;}}
 .wgo{{color:{ACCENT};font-weight:700;}}
 .wleaf{{background:{PANEL_BG};border:1px solid {TRACK};
 border-radius:10px;padding:14px 16px;margin:12px 0;}}
+.tlegend{{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 4px;
+font-size:12.5px;color:{GRAY};}}
+.tlegend .sw{{display:inline-block;width:14px;height:14px;border-radius:4px;
+margin-right:6px;vertical-align:-2px;}}
+.tlegend b{{color:{INK};}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -532,6 +565,7 @@ with tab_how:
                "so the tree is not allowed to see them.")
     st.subheader("The tree itself")
     st.pyplot(draw_tree_diagram())
+    tree_legend()
     st.caption("11 nodes, 6 leaves. Every facility starts at the top and "
                "answers its way down.")
     st.subheader("Watch a facility go through it")
