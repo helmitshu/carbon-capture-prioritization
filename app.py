@@ -3,7 +3,6 @@ import hashlib
 import re
 import time
 
-import joblib
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -12,16 +11,17 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from features import CO2_CUTOFF
+from features import CO2_CUTOFF, FEATURES
+from model_client import get_tree_and_encoder
 
 GHGRP_URL = "https://open.canada.ca/data/en/dataset/a8ba14b7-7f23-462a-bdbb-83b0ef629823"
 TIER_URL = "https://www.alberta.ca/technology-innovation-and-emissions-reduction-regulation"
 
 st.set_page_config(page_title="CCS Priority Screening", layout="wide")
 
-bundle = joblib.load("model/model.pkl")
-tree, le = bundle["model"], bundle["encoder"]
-FEATURES = bundle["features"]
+# The model is served by the prediction API when reachable, with an
+# in-process fallback, so the app never goes down because the API does.
+tree, le, MODEL_SOURCE = get_tree_and_encoder()
 fac = pd.read_csv("model/facilities.csv")
 yearly = pd.read_csv("data/Capstone_Dataset_clean.csv")
 # Model prediction for every facility, computed once. The Facilities table
@@ -778,18 +778,10 @@ with tab_about:
 
 with tab_how:
     st.subheader("The model, visually")
-    st.write("Every facility walks down a decision tree. Here are the questions, in order.\n\n"
-             "1. Are average emissions at or below 271,000 tonnes a year? Every facility gets this one. "
-             "The tree tested every possible cutoff on all 150 facilities and this one split CCS candidates "
-             "from CU candidates most cleanly.\n"
-             "2. The next question depends on the answer. Smaller emitters get a finer size question, "
-             "at or below 186,000 tonnes a year. Larger emitters get a sector question, which groups industries "
-             "by NAICS code and asks which side the facility lands on.\n"
-             "3. The last question is either one more size cut, at or below 125,000 tonnes a year, or one more "
-             "sector grouping. Then the facility lands on a verdict. The biggest emitters only need two questions "
-             "to get there.\n\n"
-             "Nobody wrote these questions. The tree tried every feature and every cutoff against the 150 labeled "
-             "facilities and kept the splits that separated the two groups best. That is what training means here.")
+    st.write("This is the part that makes it a model and not a filter. Raw data "
+             "flows through a pipeline, and every facility walks down a decision "
+             "tree: three questions, asked in order, each answer choosing a "
+             "branch until the facility lands on a verdict.")
     st.subheader("The full flow")
     st.markdown(pipeline_html(), unsafe_allow_html=True)
     st.caption("Gas shares never enter the features. They define the label, "
