@@ -14,5 +14,6 @@
       "artifact_sha256": "ea3fa8787dfc070b6606bd907fdd0d1a1771fe35199473aa93f47f2fbbac5b26",
       "registered_date": "2026-10-04"
     }
-  }
+  },
+  "production": "v1"
 }
