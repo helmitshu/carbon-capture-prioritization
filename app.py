@@ -778,10 +778,10 @@ with tab_about:
 
 with tab_how:
     st.subheader("The model, visually")
-    st.write("This is the part that makes it a model and not a filter. Raw data "
-             "flows through a pipeline, and every facility walks down a decision "
-             "tree: three questions, asked in order, each answer choosing a "
-             "branch until the facility lands on a verdict.")
+    st.write("Every facility walks down a decision tree. Three questions, asked "
+             "in order, and each answer picks a branch until the facility lands "
+             "on a verdict. The tree learned these questions from 150 Alberta "
+             "facilities, so the branches are the data's own logic, not someone's opinion.")
     st.subheader("The full flow")
     st.markdown(pipeline_html(), unsafe_allow_html=True)
     st.caption("Gas shares never enter the features. They define the label, "
