@@ -49,6 +49,32 @@ def test_predict_rejects_bad_shapes():
     assert nan.status_code == 422
 
 
+def test_predict_writes_log(tmp_path, monkeypatch):
+    import api.main as api_main
+    log_file = tmp_path / "predictions.jsonl"
+    monkeypatch.setattr(api_main, "LOG_PATH", str(log_file))
+    r = client.post("/predict", json={"instances": [[13.02, 3, 10]]})
+    assert r.status_code == 200
+    lines = log_file.read_text(encoding="utf-8").strip().split("\n")
+    assert len(lines) == 1
+    import json as _json
+    rec = _json.loads(lines[0])
+    assert rec["model_version"] == "v2"
+    assert rec["n_instances"] == 1
+    assert rec["instances"] == [[13.02, 3, 10]]
+    assert rec["predictions"] == ["CCS Candidate"]
+    assert "ts" in rec and "latency_ms" in rec
+
+
+def test_rejected_request_writes_no_log(tmp_path, monkeypatch):
+    import api.main as api_main
+    log_file = tmp_path / "predictions.jsonl"
+    monkeypatch.setattr(api_main, "LOG_PATH", str(log_file))
+    r = client.post("/predict", json={"instances": []})
+    assert r.status_code == 422
+    assert not log_file.exists()
+
+
 def test_structure_covers_walkthrough_needs():
     r = client.get("/model/structure")
     assert r.status_code == 200
