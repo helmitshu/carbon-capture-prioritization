@@ -1,19 +1,20 @@
 {
   "versions": {
     "v1": {
-      "stage": "production",
+      "stage": "archived",
       "card": "model_v1.card.json",
       "artifact": "model_v1.pkl",
       "artifact_sha256": "8c4f3e1b158c4e0407cdb9eca8ac8ad5dc1058e045ed450e428da2c28ae628e3",
       "registered_date": "2026-10-04"
     },
     "v2": {
-      "stage": "staging",
+      "stage": "production",
       "card": "model_v2.card.json",
       "artifact": "model_v2.pkl",
       "artifact_sha256": "ea3fa8787dfc070b6606bd907fdd0d1a1771fe35199473aa93f47f2fbbac5b26",
-      "registered_date": "2026-10-04"
+      "registered_date": "2026-10-04",
+      "promoted_date": "2026-10-04"
     }
   },
-  "production": "v1"
+  "production": "v2"
 }
