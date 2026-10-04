@@ -67,8 +67,7 @@ with h1:
     st.markdown(
         "<div style='width:56px;height:4px;border-radius:2px;margin-top:4px;"
         "background:linear-gradient(90deg,#0e7c7b,#0071e3);'></div>",
-        unsafe_allow_html=True)        
-    
+        unsafe_allow_html=True)
 with h2:
     st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
     st.toggle("Dark mode", key="dark_mode")
@@ -108,6 +107,22 @@ if dark:
     [data-testid="stExpander"] summary p { color: #f5f5f7 !important; }
     [data-testid="stDataFrame"] { background-color: #1c1c1e; }
     section[data-testid="stSlider"] p { color: #f5f5f7 !important; }
+    [data-testid="stDownloadButton"] button[kind="secondary"],
+    [data-testid="stButton"] button[kind="secondary"] {
+        background-color: #1c1c1e !important;
+        border-color: #3a3a3c !important;
+    }
+    [data-testid="stDownloadButton"] button[kind="secondary"] p,
+    [data-testid="stButton"] button[kind="secondary"] p {
+        color: #f5f5f7 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+if not dark:
+    st.markdown("""
+    <style>
+    [data-testid="stAppViewContainer"] { background-color: #f6f7f9; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -648,7 +663,6 @@ _TRICKY_ID = _TRICKY_ID or fac["facility_id"].iloc[0]
 
 st.markdown(f"""
 <style>
-X  
 .pipe{{display:flex;align-items:stretch;gap:4px;flex-wrap:wrap;margin:10px 0;}}
 .pstep{{background:{PANEL_BG};border:1px solid {TRACK};border-radius:10px;
 padding:10px 12px;min-width:105px;flex:1;}}
@@ -659,14 +673,13 @@ padding:10px 12px;min-width:105px;flex:1;}}
 border-radius:0 10px 10px 0;padding:10px 14px;margin:8px 0;}}
 .wstep-num{{font-size:11px;font-weight:700;color:{ACCENT};
 text-transform:uppercase;letter-spacing:0.5px;}}
-
 .wstep-q{{font-size:15px;font-weight:600;color:{INK};margin-top:2px;}}
 .wstep-a{{font-size:14px;color:{GRAY};margin-top:2px;}}
 .wstep-a b{{color:{INK};}}
 .wgo{{color:{ACCENT};font-weight:700;}}
 .wleaf{{background:{PANEL_BG};border:1px solid {TRACK};
 border-radius:10px;padding:14px 16px;margin:12px 0;}}
-
+.tlegend{{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 4px;
 font-size:12.5px;color:{GRAY};}}
 .tlegend .sw{{display:inline-block;width:14px;height:14px;border-radius:4px;
 margin-right:6px;vertical-align:-2px;}}
@@ -678,13 +691,6 @@ padding:14px 16px;margin:12px 0;}}
 .dbox ul{{color:{GRAY};font-size:14px;margin:8px 0 0;padding-left:20px;}}
 .dbox li{{margin:4px 0;}}
 .dbox b{{color:{INK};}}
-               }
-              }}
-              }}
-              }}
-              }}
-  X  
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -703,7 +709,7 @@ with tab_about:
              "candidates for carbon capture or carbon utilization. What used to "
              "take months of manual review now takes minutes, across every "
              "facility, not just the big names.")
-    st.write("Built as an AMII capstone project.")    
+    st.write("Built as an AMII capstone project.")
     st.write("The visual version lives on the **How it works** tab: the full "
              "pipeline as a flow diagram, the tree itself, and an animated "
              "walkthrough of a facility going through it, question by question.")
@@ -909,15 +915,20 @@ with tab_facilities:
     sig_src = f"{q}|{'/'.join(sorted(sectors))}|{'/'.join(sorted(prios))}|{min_e}"
     sig = hashlib.md5(sig_src.encode()).hexdigest()[:10]
     st.write(f"{len(t)} facilities")
+    # Display-ready copy: numbers are formatted as text here because
+    # column_config number formatting did not render on the live app.
+    # t keeps the raw numbers for sorting and row selection.
+    disp = t[["facility_name", "sector", "avg_annual_emissions", "co2_share",
+              "priority", "model_prediction", "source"]].copy()
+    disp["avg_annual_emissions"] = disp["avg_annual_emissions"].map(lambda x: f"{x:,.0f}")
+    disp["co2_share"] = disp["co2_share"].map(lambda x: f"{x:.0%}")
     event = st.dataframe(
-        t[["facility_name", "sector", "avg_annual_emissions", "co2_share",
-           "priority", "model_prediction", "source"]],
+        disp,
         column_config={
             "facility_name": st.column_config.TextColumn("Facility"),
             "sector": st.column_config.TextColumn("Sector"),
-            "avg_annual_emissions": st.column_config.NumberColumn(
-                "Avg emissions (tCO2e/yr)", format="%.0f"),
-            "co2_share": st.column_config.NumberColumn("CO2 share", format="%.0%%"),
+            "avg_annual_emissions": st.column_config.TextColumn("Avg emissions (tCO2e/yr)"),
+            "co2_share": st.column_config.TextColumn("CO2 share"),
             "priority": st.column_config.TextColumn("Rule-based result"),
             "model_prediction": st.column_config.TextColumn("Model prediction"),
             "source": st.column_config.LinkColumn("Data source",
@@ -935,15 +946,16 @@ with tab_facilities:
         st.divider()
         facility_profile(fac[fac["facility_id"] == sel["facility_id"]].iloc[0])
 
-
-if not dark:
-    st.markdown("""
-    <style>
-    [data-testid="stAppViewContainer"] { background-color: #f6f7f9; }
-    </style>
-    """, unsafe_allow_html=True)    
-
-# Phone layout: stack side-by-side columns vertically on narrow  screens.
-st.markdown("<style>@media (max-width: 640px) { [data-testid='stHorizontalBlock'] { flex-wrap: wrap !important; } [data-testid='stHorizontalBlock'] > [data-testid='column'] { flex: 1 1 100% !important; min-width: 100% !important; } .block-container { padding-left: 1rem !important; padding-right: 1rem !important; } }</style>", unsafe_allow_html=True)
-
-st.markdown('''
+# Phone layout: stack side-by-side columns vertically on narrow screens.
+# Plain (non-f) string on purpose: no brace escaping to get wrong.
+st.markdown("""
+<style>
+@media (max-width: 640px) {
+  [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
+  [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+    flex: 1 1 100% !important; min-width: 100% !important; }
+  .block-container { padding-left: 1rem !important;
+    padding-right: 1rem !important; }
+}
+</style>
+""", unsafe_allow_html=True)
