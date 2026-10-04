@@ -8,9 +8,10 @@ emissions data.
 
 Alberta emits roughly 270 megatonnes of CO2e per year. Carbon capture is
 expensive, so it cannot go everywhere. The question is where each dollar
-removes the most CO2. Case-by-case engineering reviews are slow and cover
-only the largest facilities. Public emissions data can do the first screening
-pass for every facility at once.
+removes the most CO2. Case-by-case engineering reviews are thorough but
+resource-intensive, so attention naturally concentrates on the largest
+emitters. Public emissions data can do the first screening pass for every
+reporting facility at once.
 
 ## Data
 
@@ -21,11 +22,12 @@ Environment and Climate Change Canada, Greenhouse Gas Reporting Program
 ## Method
 
 - Aggregate to one row per facility (mean emissions across reported years).
-- Keep facilities averaging at least 100,000 tCO2e per year (Alberta TIER
-  threshold), the population where capture is economically viable.
+- Keep facilities averaging at least 100,000 tCO2e per year, the population
+  covered by Alberta's TIER regulation.
 - Label by CO2 share of total emissions: at or above 85% screens as a
   CCS Candidate (concentrated stream), below as a Potential CU Candidate
-  (mixed stream, better for utilization).
+  (mixed stream, better for utilization). The 85% line is a stipulated
+  threshold, not an industry standard.
 - Decision Tree classifier (max depth 3, balanced class weights) on three
   features: log-scaled average emissions, encoded industry sector, years
   reported. Gas shares are excluded from features to avoid label leakage.
@@ -34,7 +36,8 @@ Environment and Climate Change Canada, Greenhouse Gas Reporting Program
 ## Results
 
 150 above-threshold facilities: 130 CCS candidates, 20 CU candidates.
-Accuracy 0.75, macro F1 0.62. CCS recall 0.76, CU recall 0.65. The tree
+Accuracy 0.75, macro F1 0.62. CCS recall 0.76, CU recall 0.65. CU precision
+is only 0.30, so most CU predictions need human review. The tree
 splits almost entirely on emissions scale; sector refines the boundary.
 Oil sands, oil and gas extraction, and fossil-fuel power generation lead
 the priority list.
