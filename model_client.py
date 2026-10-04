@@ -44,6 +44,7 @@ class _RemoteTree:
             children_right=np.array(struct["children_right"]),
             feature=np.array(struct["feature"]),
             threshold=np.array(struct["threshold"]),
+            n_node_samples=np.array(struct["n_node_samples"]),
         )
         self.max_depth = struct["max_depth"]
 
