@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import joblib
@@ -34,6 +35,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_DIR = PROJECT_ROOT / "model" / "registry"
 
 MODEL_VERSION = os.environ.get("MODEL_VERSION", "v2")
+
+# Prediction log (backlog item 4): every successful prediction is appended
+# here as one JSON line with timestamp, inputs, and outputs. This is what
+# makes monitoring possible later. Single-worker assumption: with multiple
+# uvicorn workers, point each at its own file via PREDICT_LOG_PATH.
+# NOTE: Railway's disk is ephemeral; attach a volume or ship these lines
+# to external storage if the log must survive redeploys.
+LOG_PATH = os.environ.get(
+    "PREDICT_LOG_PATH",
+    str(PROJECT_ROOT / "logs" / "predictions.jsonl"))
 
 app = FastAPI(title="Capstone prediction API")
 
@@ -89,10 +100,35 @@ def predict(req: PredictRequest) -> PredictResponse:
         raise HTTPException(status_code=422,
                             detail="instances contain NaN or inf")
     Xf = pd.DataFrame(X, columns=_features)
+    t0 = time.perf_counter()
     preds = _tree.predict(Xf).tolist()
     leaves = _tree.apply(Xf).astype(int).tolist()
+    latency_ms = (time.perf_counter() - t0) * 1000.0
+    _log_prediction(req.instances, preds, leaves, latency_ms)
     return PredictResponse(predictions=preds, leaf_ids=leaves,
                            model_version=MODEL_VERSION)
+
+
+def _log_prediction(instances, predictions, leaf_ids,
+                    latency_ms: float) -> None:
+    """Append one JSON line per successful prediction batch."""
+    try:
+        log_path = Path(LOG_PATH)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
+            "model_version": MODEL_VERSION,
+            "n_instances": len(instances),
+            "instances": instances,
+            "predictions": predictions,
+            "leaf_ids": leaf_ids,
+            "latency_ms": round(latency_ms, 2),
+        }
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except OSError:
+        # Logging must never break serving.
+        pass
 
 
 @app.get("/model/structure")

@@ -24,3 +24,11 @@ The Streamlit app service needs one env var:
 
 If the API is unreachable the app falls back to its bundled model file,
 so the app service works with or without this set.
+
+## Prediction log
+
+Every successful prediction is appended to `logs/predictions.jsonl`
+(timestamp, model version, inputs, predictions, leaf ids, latency).
+Override with `PREDICT_LOG_PATH`. Railway's disk is ephemeral, so attach
+a volume or ship the lines elsewhere if the log must survive redeploys.
+See `RETRAIN_POLICY.md` for how this log feeds the drift trigger.
