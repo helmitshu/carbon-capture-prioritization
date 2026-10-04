@@ -17,6 +17,9 @@ tree, le = bundle["model"], bundle["encoder"]
 FEATURES = bundle["features"]
 fac = pd.read_csv("model/facilities.csv")
 yearly = pd.read_csv("data/Capstone_Dataset_clean.csv")
+# Model prediction for every facility, computed once. The Facilities table
+# shows this next to the rule-based label so the two never get mixed up.
+fac["model_prediction"] = tree.predict(fac[FEATURES].values)
 
 # Per-leaf model reliability, computed once from in-sample fit. Leaves where
 # the tree is frequently wrong get their own alert. (Raw leaf probabilities
@@ -277,9 +280,8 @@ def facility_profile(row):
     st.write("**Emissions history**")
     hist = yearly[yearly["facility_id"] == row["facility_id"]].sort_values("year")
     st.line_chart(hist.set_index("year")["total_emissions"])
-    x = row[FEATURES].values.reshape(1, -1)
     st.write("**Screening result**")
-    pred = tree.predict(x)[0]
+    pred = row["model_prediction"]
     priority_badge(pred)
     disagreement_banner(pred, row)
     borderline_banner(row)
@@ -359,9 +361,8 @@ with tab_screen:
                               format_func=lambda i: display[i])
     st.caption(f"{len(ids)} facilities")
     row = fac[fac["facility_id"] == choice].iloc[0]
-    x = row[FEATURES].values.reshape(1, -1)
 
-    pred = tree.predict(x)[0]
+    pred = row["model_prediction"]
     priority_badge(pred)
     disagreement_banner(pred, row)
     borderline_banner(row)
@@ -402,7 +403,8 @@ with tab_screen:
                  "Reporting Program, public dataset 2004 to 2023 [1].")
 
 with tab_facilities:
-    st.write("Every screened facility, with its data source and result. All figures "
+    st.write("Every screened facility, with its data source, the rule-based "
+             "result, and the model prediction side by side. All figures "
              "come from Environment and Climate Change Canada's Greenhouse Gas "
              "Reporting Program [1]. Facilities averaging at least 100,000 tonnes "
              "CO2e per year fall under Alberta's TIER regulation [2] and form the "
@@ -414,7 +416,7 @@ with tab_facilities:
         sectors = st.multiselect("Sector", sorted(fac["sector"].unique()),
                                  default=sorted(fac["sector"].unique()))
     with f3:
-        prios = st.multiselect("Result", ["CCS Candidate", "Potential CU Candidate"],
+        prios = st.multiselect("Rule-based result", ["CCS Candidate", "Potential CU Candidate"],
                                default=["CCS Candidate", "Potential CU Candidate"])
     min_e = st.slider("Minimum average annual emissions (tonnes CO2e)",
                       100_000, int(fac["avg_annual_emissions"].max()),
@@ -433,14 +435,15 @@ with tab_facilities:
     st.write(f"{len(t)} facilities")
     event = st.dataframe(
         t[["facility_name", "sector", "avg_annual_emissions", "co2_share",
-           "priority", "source"]],
+           "priority", "model_prediction", "source"]],
         column_config={
             "facility_name": st.column_config.TextColumn("Facility"),
             "sector": st.column_config.TextColumn("Sector"),
             "avg_annual_emissions": st.column_config.NumberColumn(
                 "Avg emissions (tCO2e/yr)", format="%.0f"),
             "co2_share": st.column_config.NumberColumn("CO2 share", format="%.0%%"),
-            "priority": st.column_config.TextColumn("Screening result"),
+            "priority": st.column_config.TextColumn("Rule-based result"),
+            "model_prediction": st.column_config.TextColumn("Model prediction"),
             "source": st.column_config.LinkColumn("Data source",
                                                   display_text="ECCC GHGRP"),
         },
