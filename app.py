@@ -678,12 +678,6 @@ padding:14px 16px;margin:12px 0;}}
 .dbox ul{{color:{GRAY};font-size:14px;margin:8px 0 0;padding-left:20px;}}
 .dbox li{{margin:4px 0;}}
 .dbox b{{color:{INK};}}
-@media (max-width: 640px) {{
-  [data-testid="stHorizontalBlock"]  {{ flex-wrap: wrap !important; }}
-    [data-testid="stHorizontalBlock"] > [data-testid="column"] {{
-        flex: 1 1 100% !important; min-width: 100% !important; }}
-          .block-container {{ padding-left: 1rem !important;
-              padding-right: 1rem !important; }} }}
                }
               }}
               }}
@@ -948,3 +942,8 @@ if not dark:
     [data-testid="stAppViewContainer"] { background-color: #f6f7f9; }
     </style>
     """, unsafe_allow_html=True)    
+
+# Phone layout: stack side-by-side columns vertically on narrow  screens.
+st.markdown("<style>@media (max-width: 640px) { [data-testid='stHorizontalBlock'] { flex-wrap: wrap !important; } [data-testid='stHorizontalBlock'] > [data-testid='column'] { flex: 1 1 100% !important; min-width: 100% !important; } .block-container { padding-left: 1rem !important; padding-right: 1rem !important; } }</style>", unsafe_allow_html=True)
+
+st.markdown('''
