@@ -64,6 +64,11 @@ for _, r in fac.iterrows():
 h1, h2 = st.columns([6, 1])
 with h1:
     st.title("Carbon Capture Priority Screening")
+    st.markdown(
+        "<div style='width:56px;height:4px;border-radius:2px;margin-top:4px;"
+        "background:linear-gradient(90deg,#0e7c7b,#0071e3);'></div>",
+        unsafe_allow_html=True)        
+    
 with h2:
     st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
     st.toggle("Dark mode", key="dark_mode")
@@ -75,8 +80,8 @@ TRACK = "#3a3a3c" if dark else "#e8e8ed"
 RED = "#ff453a" if dark else "#e02020"
 AMBER = "#ffd60a" if dark else "#e8930c"
 ACCENT = "#0a84ff" if dark else "#0071e3"
-PAGE_BG = "#000000" if dark else "#ffffff"
-PANEL_BG = "#1c1c1e" if dark else "#f5f5f7"
+PAGE_BG = "#000000" if dark else "#f6f7f9"
+PANEL_BG = "#1c1c1e" if dark else "#ffffff"
 
 if dark:
     st.markdown("""
@@ -689,6 +694,7 @@ with tab_about:
              "candidates for carbon capture or carbon utilization. What used to "
              "take months of manual review now takes minutes, across every "
              "facility, not just the big names.")
+    st.write("Built as an AMII capstone project.")    
     st.write("The visual version lives on the **How it works** tab: the full "
              "pipeline as a flow diagram, the tree itself, and an animated "
              "walkthrough of a facility going through it, question by question.")
@@ -919,3 +925,11 @@ with tab_facilities:
         sel = t.iloc[rows[0]]
         st.divider()
         facility_profile(fac[fac["facility_id"] == sel["facility_id"]].iloc[0])
+
+
+if not dark:
+    st.markdown("""
+    <style>
+    [data-testid="stAppViewContainer"] { background-color: #f6f7f9; }
+    </style>
+    """, unsafe_allow_html=True)    
