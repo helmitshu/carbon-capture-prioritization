@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from features import CO2_CUTOFF
+
 GHGRP_URL = "https://open.canada.ca/data/en/dataset/a8ba14b7-7f23-462a-bdbb-83b0ef629823"
 TIER_URL = "https://www.alberta.ca/technology-innovation-and-emissions-reduction-regulation"
 
@@ -162,7 +164,7 @@ def disagreement_banner(pred, row):
         f"Model and rule disagree. Needs human review.</div>"
         f"<div style='color:{GRAY};font-size:14px;margin-top:4px;'>"
         f"The data says <b style='color:{INK};'>{rule}</b> "
-        f"(CO2 share {row['co2_share']:.0%}, cutoff 85%), but the model "
+        f"(CO2 share {row['co2_share']:.0%}, cutoff {CO2_CUTOFF:.0%}), but the model "
         f"predicted <b style='color:{INK};'>{pred}</b>. The tree never sees "
         f"the CO2 share directly, so smaller facilities with pure CO2 "
         f"streams can be misclassified.</div></div>",
@@ -188,7 +190,7 @@ def borderline_banner(row):
     _alert_box(
         "Borderline call. Needs human review.",
         f"CO2 share is {row['co2_share']:.0%}, within "
-        f"{BORDERLINE_PTS:.0%} of the 85% cutoff. The 85% line is a "
+        f"{BORDERLINE_PTS:.0%} of the {CO2_CUTOFF:.0%} cutoff. The {CO2_CUTOFF:.0%} line is a "
         f"stipulated threshold, not a physical boundary: a small data "
         f"revision would flip this verdict.")
 
@@ -222,7 +224,7 @@ def share_bar(share):
         f"<div style='display:flex;justify-content:space-between;font-size:13px;"
         f"color:{GRAY};margin-top:8px;'>"
         f"<span>CO2 share: <b style='color:{INK};'>{pct:.0f}%</b></span>"
-        f"<span style='color:{ACCENT};'>85% CCS cutoff</span>"
+        f"<span style='color:{ACCENT};'>{CO2_CUTOFF:.0%} CCS cutoff</span>"
         f"</div></div>",
         unsafe_allow_html=True)
 

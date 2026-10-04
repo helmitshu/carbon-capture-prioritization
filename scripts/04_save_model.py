@@ -1,30 +1,28 @@
 """Phase 5a: train the final model and save deployment artifacts."""
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import json
 import joblib
-import numpy as np
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.preprocessing import LabelEncoder
+
+from features import add_features, FEATURES, LABELS, MODEL_PARAMS
 
 above = pd.read_csv("data/facility_labeled.csv")
 
-# re-derive features exactly as in 03 (kept in sync by construction)
-above["log_emissions"] = np.log1p(above["avg_annual_emissions"])
-le = LabelEncoder()
-above["naics_sector_encoded"] = le.fit_transform(above["sector"].astype(str))
-X = above[["log_emissions", "naics_sector_encoded", "years_reported"]]
+# features from the shared module: same derivation as 03, by construction
+X, le = add_features(above)
 y = above["priority"]
 
-tree = DecisionTreeClassifier(max_depth=3, min_samples_leaf=2,
-                              min_samples_split=6, class_weight="balanced",
-                              random_state=42)
+tree = DecisionTreeClassifier(**MODEL_PARAMS)
 tree.fit(X, y)
 
-import os
 os.makedirs("model", exist_ok=True)
 joblib.dump({"model": tree, "encoder": le,
              "features": list(X.columns),
-             "labels": ["CCS Candidate", "Potential CU Candidate"]},
+             "labels": LABELS},
             "model/model.pkl")
 # facility lookup table for the app
 above.to_csv("model/facilities.csv", index=False)

@@ -52,6 +52,8 @@ streamlit run app.py                # screening app
 ## Structure
 
 - `app.py`: screening app (pick a facility, see its priority and the reasons)
+- `features.py`: shared feature engineering, constants, and model config. Single
+  source of truth imported by `scripts/03`, `scripts/04`, and `app.py`
 - `model/`: trained tree, sector encoder, facility lookup table
 - `scripts/`: profiling, cleaning, feature engineering, modeling
 - `data/`: raw and cleaned GHGRP extracts

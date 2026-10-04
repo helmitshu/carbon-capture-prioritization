@@ -7,15 +7,21 @@
 - Model: DecisionTree(max_depth=3, min_samples_leaf=2, min_samples_split=6,
   class_weight=balanced), StratifiedKFold(5, shuffle, rs=42)
 """
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier, export_text, plot_tree
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
-from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+from features import (add_features, make_labels, FEATURES, LABELS,
+                      MODEL_PARAMS, CV_PARAMS, TIER_THRESHOLD, CO2_CUTOFF)
 
 df = pd.read_csv("data/Capstone_Dataset_clean.csv")
 # clean already emits lesson column names
@@ -45,37 +51,31 @@ fac["ch4_share"] = fac["avg_ch4_co2e"] / fac["avg_annual_emissions"]
 fac["n2o_share"] = fac["avg_n2o_co2e"] / fac["avg_annual_emissions"]
 
 # Step 3: TIER threshold filter
-TIER = 100_000
-fac["emission_band"] = np.where(fac["avg_annual_emissions"] >= TIER,
+fac["emission_band"] = np.where(fac["avg_annual_emissions"] >= TIER_THRESHOLD,
                                 "Above Threshold", "Below Threshold")
 above = fac[fac["emission_band"] == "Above Threshold"].copy()
 print(f"above-threshold facilities: {len(above)} of {len(fac)}")
 
 # Step 4: labels (85% cutoff is arbitrary per lesson, not an industry standard)
-CO2_THRESHOLD = 0.85
-above["priority"] = above["co2_share"].apply(
-    lambda x: "CCS Candidate" if x >= CO2_THRESHOLD else "Potential CU Candidate")
+above = make_labels(above)
 print(above["priority"].value_counts())
 
 # Step 5: model features (gas shares excluded: leakage)
-above["log_emissions"] = np.log1p(above["avg_annual_emissions"])
-le = LabelEncoder()
-above["naics_sector_encoded"] = le.fit_transform(above["sector"].astype(str))
-X = above[["log_emissions", "naics_sector_encoded", "years_reported"]]
+X, le = add_features(above)
+# keep the derived columns on the frame for the CSV; years_reported is
+# already there, so only attach the two new ones
+above[["log_emissions", "naics_sector_encoded"]] = X[["log_emissions", "naics_sector_encoded"]]
 y = above["priority"]
 print("feature dtypes ok:", X.dtypes.to_dict())
 
 # Model + 5-fold stratified CV
-tree = DecisionTreeClassifier(max_depth=3, min_samples_leaf=2,
-                              min_samples_split=6, class_weight="balanced",
-                              random_state=42)
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+tree = DecisionTreeClassifier(**MODEL_PARAMS)
+cv = StratifiedKFold(**CV_PARAMS)
 y_pred = cross_val_predict(tree, X, y, cv=cv)
-labels = ["CCS Candidate", "Potential CU Candidate"]
 print("\n--- CLASSIFICATION REPORT (5-fold CV) ---")
-print(classification_report(y, y_pred, labels=labels, digits=3))
+print(classification_report(y, y_pred, labels=LABELS, digits=3))
 print("--- CONFUSION MATRIX ---")
-print(pd.DataFrame(confusion_matrix(y, y_pred, labels=labels),
+print(pd.DataFrame(confusion_matrix(y, y_pred, labels=LABELS),
                    index=["true CCS", "true CU"], columns=["pred CCS", "pred CU"]))
 
 # Fit on full data for interpretation + visualization
@@ -88,7 +88,7 @@ for f, imp in sorted(zip(X.columns, tree.feature_importances_),
     print(f"  {f}: {imp:.3f}")
 
 plt.figure(figsize=(16, 9))
-plot_tree(tree, feature_names=list(X.columns), class_names=labels,
+plot_tree(tree, feature_names=list(X.columns), class_names=LABELS,
           filled=True, rounded=True, fontsize=9)
 plt.tight_layout()
 plt.savefig("hidden_files/decision_tree.png", dpi=120)
