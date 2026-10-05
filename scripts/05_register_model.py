@@ -12,9 +12,19 @@ it to its training data, metrics, and code.
 Usage:
     .venv/bin/python scripts/05_register_model.py [--version v1] [--stage production]
                                                  [--training-date 2026-10-03]
+                                                 [--source-artifact model/model.pkl]
+                                                 [--source-data data/facility_labeled.csv]
+                                                 [--training-script scripts/04_save_model.py]
+                                                 [--metrics-json hidden_files/v3_metrics.json]
 
 Idempotent: re-running with the same version overwrites the card and
 re-verifies the artifact.
+
+The --source-*, --training-script and --metrics-json flags exist for v3:
+they point registration at a non-default artifact/data/script and let the
+training script supply its own leakage-safe CV metrics (the default
+evaluate_protocol refits the tree on the encoded matrix, which is only
+valid when the encoding itself uses no target information).
 """
 from __future__ import annotations
 
@@ -101,12 +111,37 @@ def evaluate_protocol(X: pd.DataFrame, y: pd.Series) -> dict:
     }
 
 
-def build_card(version: str, stage: str, training_date: str) -> dict:
+def build_card(version: str, stage: str, training_date: str,
+               source_data: Path = SOURCE_DATA,
+               training_script: str = "scripts/04_save_model.py",
+               metrics_json: Path | None = None) -> dict:
     """Assemble the model card dict for this version."""
-    above = pd.read_csv(SOURCE_DATA)
+    above = pd.read_csv(source_data)
     X = above[FEATURES]
     y = above["priority"]
-    metrics = evaluate_protocol(X, y)
+    # v3 was cleaned from the national raw extract; v1/v2 from Alberta.
+    clean_name = ("data/Capstone_Dataset_clean_national.csv"
+                  if "national" in source_data.name
+                  else "data/Capstone_Dataset_clean.csv")
+    clean_path = PROJECT_ROOT / clean_name
+    if metrics_json is not None:
+        supplied = json.loads(Path(metrics_json).read_text())
+        metrics = {
+            "protocol": supplied["protocol"],
+            "accuracy": supplied["accuracy"],
+            "macro_avg": supplied["macro_avg"],
+            "per_class": supplied["per_class"],
+        }
+        limitations = supplied.get("limitations", [])
+    else:
+        metrics = evaluate_protocol(X, y)
+        limitations = [
+            "CU class precision is low (~0.30): most 'Potential CU' "
+            "predictions are actually CCS. See the disagreement banner.",
+            "Model errors concentrate in smaller true-CCS facilities.",
+            "Single decision tree chosen for interpretability, not "
+            "maximum performance.",
+        ]
 
     return {
         "version": version,
@@ -119,10 +154,12 @@ def build_card(version: str, stage: str, training_date: str) -> dict:
                       "(gas shares excluded from features: label leakage)",
         "metrics": metrics,
         "data": {
-            "training_file": "data/facility_labeled.csv",
-            "training_sha256": sha256_of(SOURCE_DATA),
-            "source_clean_file": "data/Capstone_Dataset_clean.csv",
-            "source_clean_sha256": sha256_of(RAW_DATA),
+            "training_file": str(source_data.relative_to(PROJECT_ROOT))
+                             if source_data.is_relative_to(PROJECT_ROOT)
+                             else source_data.name,
+            "training_sha256": sha256_of(source_data),
+            "source_clean_file": clean_name,
+            "source_clean_sha256": sha256_of(clean_path),
             "n_facilities": int(len(above)),
             "class_balance": {
                 label: int((y == label).sum()) for label in LABELS
@@ -132,17 +169,11 @@ def build_card(version: str, stage: str, training_date: str) -> dict:
             "file": f"registry/model_{version}.pkl",
             "sha256": "",  # filled after the artifact copy is written
         },
-        "training_script": "scripts/04_save_model.py",
+        "training_script": training_script,
         "training_date": training_date,
         "registered_date": date.today().isoformat(),
         "lesson_spec": "AMII AI Pathways Technical Track, Capstone Project",
-        "limitations": [
-            "CU class precision is low (~0.30): most 'Potential CU' "
-            "predictions are actually CCS. See the disagreement banner.",
-            "Model errors concentrate in smaller true-CCS facilities.",
-            "Single decision tree chosen for interpretability, not "
-            "maximum performance.",
-        ],
+        "limitations": limitations,
     }
 
 
@@ -154,13 +185,17 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
     os.replace(tmp, path)
 
 
-def register(version: str, stage: str, training_date: str) -> Path:
-    """Register SOURCE_ARTIFACT as `version`; return the card path."""
-    if not SOURCE_ARTIFACT.exists():
-        raise FileNotFoundError(f"missing source artifact: {SOURCE_ARTIFACT}")
+def register(version: str, stage: str, training_date: str,
+             source_artifact: Path = SOURCE_ARTIFACT,
+             source_data: Path = SOURCE_DATA,
+             training_script: str = "scripts/04_save_model.py",
+             metrics_json: Path | None = None) -> Path:
+    """Register source_artifact as `version`; return the card path."""
+    if not source_artifact.exists():
+        raise FileNotFoundError(f"missing source artifact: {source_artifact}")
     REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
 
-    bundle = joblib.load(SOURCE_ARTIFACT)
+    bundle = joblib.load(source_artifact)
 
     # 1. Versioned artifact copy.
     artifact_path = REGISTRY_DIR / f"model_{version}.pkl"
@@ -168,7 +203,7 @@ def register(version: str, stage: str, training_date: str) -> Path:
 
     # 2. Verify the copy: reload and confirm identical predictions.
     reloaded = joblib.load(artifact_path)
-    above = pd.read_csv(SOURCE_DATA)
+    above = pd.read_csv(source_data)
     X = above[FEATURES].to_numpy()
     original_pred = bundle["model"].predict(X)
     reloaded_pred = reloaded["model"].predict(X)
@@ -180,7 +215,10 @@ def register(version: str, stage: str, training_date: str) -> Path:
                            "feature list mismatch")
 
     # 3. Model card.
-    card = build_card(version, stage, training_date)
+    card = build_card(version, stage, training_date,
+                      source_data=source_data,
+                      training_script=training_script,
+                      metrics_json=metrics_json)
     card["artifact"]["sha256"] = sha256_of(artifact_path)
     card_path = REGISTRY_DIR / f"model_{version}.card.json"
     card_path.write_text(json.dumps(card, indent=2) + "\n")
@@ -210,14 +248,34 @@ def main() -> None:
     parser.add_argument("--training-date", default=None,
                         help="training date YYYY-MM-DD (default: the source "
                              "artifact file's modification date)")
+    parser.add_argument("--source-artifact", default=str(SOURCE_ARTIFACT),
+                        help="model artifact to register "
+                             "(default: model/model.pkl)")
+    parser.add_argument("--source-data", default=str(SOURCE_DATA),
+                        help="labeled training CSV "
+                             "(default: data/facility_labeled.csv)")
+    parser.add_argument("--training-script",
+                        default="scripts/04_save_model.py",
+                        help="script that trained the artifact, for the card")
+    parser.add_argument("--metrics-json", default=None,
+                        help="JSON with leakage-safe CV metrics "
+                             "{protocol, accuracy, macro_avg, per_class, "
+                             "limitations} to use instead of recomputing")
     args = parser.parse_args()
 
+    source_artifact = Path(args.source_artifact)
     training_date = args.training_date
     if training_date is None:
         training_date = date.fromtimestamp(
-            SOURCE_ARTIFACT.stat().st_mtime).isoformat()
+            source_artifact.stat().st_mtime).isoformat()
 
-    card_path = register(args.version, args.stage, training_date)
+    card_path = register(
+        args.version, args.stage, training_date,
+        source_artifact=source_artifact,
+        source_data=Path(args.source_data),
+        training_script=args.training_script,
+        metrics_json=Path(args.metrics_json)
+        if args.metrics_json else None)
     card = json.loads(card_path.read_text())
     print(f"registered model_{args.version}.pkl "
           f"(stage={args.stage}, artifact verified)")
