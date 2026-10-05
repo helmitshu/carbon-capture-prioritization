@@ -14,6 +14,13 @@
       "artifact_sha256": "ea3fa8787dfc070b6606bd907fdd0d1a1771fe35199473aa93f47f2fbbac5b26",
       "registered_date": "2026-10-04",
       "promoted_date": "2026-10-04"
+    },
+    "v3": {
+      "stage": "staging",
+      "card": "model_v3.card.json",
+      "artifact": "model_v3.pkl",
+      "artifact_sha256": "e8cdd2769e0af5127954181620c2e2d4584f1070350b873ca71341efa957b1d9",
+      "registered_date": "2026-10-05"
     }
   },
   "production": "v2"
