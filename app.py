@@ -1,5 +1,6 @@
 """Capstone deployment app: CCS/CU priority screening for Alberta facilities."""
 import hashlib
+import json
 import re
 import time
 
@@ -12,7 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from features import CO2_CUTOFF, FEATURES
-from model_client import get_tree_and_encoder
+from model_client import get_tree_and_encoder, predict_batch
 
 GHGRP_URL = "https://open.canada.ca/data/en/dataset/a8ba14b7-7f23-462a-bdbb-83b0ef629823"
 TIER_URL = "https://www.alberta.ca/technology-innovation-and-emissions-reduction-regulation"
@@ -24,9 +25,12 @@ st.set_page_config(page_title="CCS Priority Screening", layout="wide")
 tree, le, MODEL_SOURCE = get_tree_and_encoder()
 fac = pd.read_csv("model/facilities.csv")
 yearly = pd.read_csv("data/Capstone_Dataset_clean.csv")
+with open("model/meta.json", encoding="utf-8") as _mf:
+    META = json.load(_mf)
 # Model prediction for every facility, computed once. The Facilities table
 # shows this next to the rule-based label so the two never get mixed up.
-fac["model_prediction"] = tree.predict(fac[FEATURES].values)
+# One call (not predict+apply) so the remote path costs a single round trip.
+fac["model_prediction"], _startup_leaves = predict_batch(fac[FEATURES], tree)
 
 
 @st.cache_data
@@ -38,16 +42,17 @@ def _file_bytes(path):
 # the tree is frequently wrong get their own alert. (Raw leaf probabilities
 # are distorted by balanced class weights, so the error rate is the honest
 # signal, not the probability.)
-_Xall = fac[FEATURES].values
-_leaf_all = tree.apply(_Xall)
-_pred_all = tree.predict(_Xall)
+# DataFrames (not numpy) go to predict/apply so sklearn never emits the
+# feature-names warning; the leaves come free from the startup batch call.
+_pred_all = fac["model_prediction"].values
+_leaf_all = _startup_leaves
 _true_all = fac["priority"].values
 LEAF_ERR = {}
 for lf in set(_leaf_all):
     m = _leaf_all == lf
     LEAF_ERR[int(lf)] = float((_pred_all[m] != _true_all[m]).mean())
 HIGH_ERR_THRESHOLD = 0.25
-BORDERLINE_PTS = 0.03  # CO2 share within 3 points of the 85% cutoff
+BORDERLINE_PTS = 0.03  # CO2 share within 3 points of the CCS cutoff
 
 # Readable labels: a few facilities are filed under a bare ID code,
 # so show the operator name with the code in brackets.
@@ -214,8 +219,8 @@ def _alert_box(title, body):
 
 
 def borderline_banner(row):
-    """Flag facilities whose CO2 share sits near the arbitrary 85% cutoff."""
-    gap = abs(row["co2_share"] - 0.85)
+    """Flag facilities whose CO2 share sits near the CCS cutoff."""
+    gap = abs(row["co2_share"] - CO2_CUTOFF)
     if gap > BORDERLINE_PTS:
         return
     _alert_box(
@@ -228,7 +233,7 @@ def borderline_banner(row):
 
 def confidence_banner(pred, row):
     """Flag predictions from tree leaves where the model is often wrong."""
-    lf = int(tree.apply(row[FEATURES].values.reshape(1, -1))[0])
+    lf = int(tree.apply(row[FEATURES].to_frame().T)[0])
     err = LEAF_ERR.get(lf, 0.0)
     if err <= HIGH_ERR_THRESHOLD:
         return
@@ -241,15 +246,16 @@ def confidence_banner(pred, row):
 
 
 def share_bar(share):
-    """CO2 share against the 85 percent CCS cutoff. The decision, drawn."""
+    """CO2 share against the CCS cutoff. The decision, drawn."""
     pct = share * 100
-    color = RED if share >= 0.85 else AMBER
+    cutoff_pct = CO2_CUTOFF * 100
+    color = RED if share >= CO2_CUTOFF else AMBER
     st.markdown(
         f"<div style='margin:10px 0 2px 0;'>"
         f"<div style='position:relative;height:10px;background:{TRACK};border-radius:5px;'>"
         f"<div style='position:absolute;left:0;top:0;height:10px;width:{pct:.1f}%;"
         f"background:{color};border-radius:5px;'></div>"
-        f"<div style='position:absolute;left:85%;top:-4px;width:2px;height:18px;"
+        f"<div style='position:absolute;left:{cutoff_pct:.1f}%;top:-4px;width:2px;height:18px;"
         f"background:{ACCENT};'></div>"
         f"</div>"
         f"<div style='display:flex;justify-content:space-between;font-size:13px;"
@@ -582,7 +588,9 @@ def draw_tree_diagram(path_nodes=()):
                         color=ACCENT if lit else GRAY, ha="center",
                         bbox=dict(facecolor=PAGE_BG, edgecolor="none", pad=1))
     ax.set_xlim(-0.9, counter[0] - 0.1)
-    ax.set_ylim(-3.95, 0.75)
+    # Vertical room scales with tree depth instead of a hardcoded depth-3
+    # window, so a retrained deeper tree still renders fully.
+    ax.set_ylim(-(int(tree.max_depth) + 0.95), 0.75)
     ax.axis("off")
     fig.tight_layout()
     return fig
@@ -609,15 +617,23 @@ def tree_legend():
 
 
 def pipeline_html():
-    """The end-to-end flow as a visual strip of stages."""
+    """The end-to-end flow as a visual strip of stages.
+
+    Every number is computed from the loaded data and model, never
+    hardcoded, so a retrain or data refresh cannot leave stale copy
+    on screen.
+    """
+    counts = fac["priority"].value_counts()
+    n_ccs = int(counts.get("CCS Candidate", 0))
+    n_cu = int(counts.get("Potential CU Candidate", 0))
     stages = [
-        ("6,999", "yearly rows reported to ECCC"),
+        (f"{len(yearly):,}", "yearly rows reported to ECCC"),
         ("Clean", "dedupe + standardize"),
-        ("1,199", "facilities after averaging years"),
-        ("150", "above the 100k TIER line"),
-        ("Label", "85% CO\u2082 rule \u2192 130 CCS / 20 CU"),
-        ("3", "features: emissions, sector, years"),
-        ("Tree", "depth 3 \u2192 prediction + alerts"),
+        (f"{META['n_facilities_total']:,}", "facilities after averaging years"),
+        (f"{len(fac)}", "above the 100k TIER line"),
+        ("Label", f"{CO2_CUTOFF:.0%} CO\u2082 rule \u2192 {n_ccs} CCS / {n_cu} CU"),
+        (f"{len(FEATURES)}", "features: emissions, sector, years"),
+        ("Tree", f"depth {tree.max_depth} \u2192 prediction + alerts"),
     ]
     cards = [f"<div class='pstep'><div class='pnum'>{n}</div>"
              f"<div class='plab'>{l}</div></div>" for n, l in stages]
@@ -651,7 +667,7 @@ def _walk_flags(r, leaf):
 
 _CLEAR_ID, _TRICKY_ID, _best = None, None, -1
 for _i, _r in fac.iterrows():
-    _lf = int(tree.apply(_r[FEATURES].values.reshape(1, -1))[0])
+    _lf = int(tree.apply(_r[FEATURES].to_frame().T)[0])
     _p, _f = _r["model_prediction"], _walk_flags(_r, _lf)
     if _CLEAR_ID is None and _f == 0 and _p == "CCS Candidate":
         _CLEAR_ID = _r["facility_id"]
@@ -789,8 +805,10 @@ with tab_how:
     st.subheader("The tree itself")
     st.pyplot(draw_tree_diagram())
     tree_legend()
-    st.caption("11 nodes, 6 leaves. Every facility starts at the top and "
-               "answers its way down.")
+    _n_nodes = int(tree.tree_.node_count)
+    _n_leaves = int((tree.tree_.children_left == -1).sum())
+    st.caption(f"{_n_nodes} nodes, {_n_leaves} leaves. Every facility starts "
+               f"at the top and answers its way down.")
     st.subheader("Watch a facility go through it")
     st.write("Two presets, or pick any facility yourself.")
     e1, e2 = st.columns(2)

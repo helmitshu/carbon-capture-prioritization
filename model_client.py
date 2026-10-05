@@ -61,6 +61,15 @@ class _RemoteTree:
     def apply(self, X) -> np.ndarray:
         return np.array(self._post(X)["leaf_ids"])
 
+    def predict_and_apply(self, X) -> tuple[np.ndarray, np.ndarray]:
+        """One round trip for both predictions and leaf ids.
+
+        The API already returns both in a single /predict response, so
+        callers that need both should prefer this over predict()+apply().
+        """
+        res = self._post(X)
+        return np.array(res["predictions"]), np.array(res["leaf_ids"])
+
 
 class _RemoteEncoder:
     """LabelEncoder-compatible shim backed by the API's class list."""
@@ -109,6 +118,15 @@ def get_tree_and_encoder():
 
 
 def predict_batch(df: pd.DataFrame, tree) -> tuple[np.ndarray, np.ndarray]:
-    """Predictions + leaf ids for a feature DataFrame via tree.predict/apply."""
-    X = df[FEATURES].to_numpy(dtype=float)
+    """Predictions + leaf ids for a feature DataFrame.
+
+    Uses a single call when the tree supports it (the remote tree fetches
+    both in one /predict round trip); falls back to predict()+apply()
+    for plain sklearn trees, where both calls are in-process and cheap.
+    A DataFrame (not numpy) is passed so sklearn does not emit the
+    feature-names warning.
+    """
+    X = df[FEATURES]
+    if hasattr(tree, "predict_and_apply"):
+        return tree.predict_and_apply(X)
     return tree.predict(X), tree.apply(X)

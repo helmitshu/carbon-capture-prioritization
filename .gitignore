@@ -1,0 +1,14 @@
+# Python bytecode: never commit compiled artifacts
+__pycache__/
+*.pyc
+*.pyo
+
+# Local virtualenvs
+.venv/
+venv/
+
+# OS noise
+.DS_Store
+
+# Streamlit secrets (if ever added): keep credentials out of git
+.streamlit/secrets.toml
