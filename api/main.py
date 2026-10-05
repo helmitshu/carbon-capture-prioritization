@@ -46,6 +46,11 @@ LOG_PATH = os.environ.get(
     "PREDICT_LOG_PATH",
     str(PROJECT_ROOT / "logs" / "predictions.jsonl"))
 
+# DoS guard: /predict materializes the whole batch as a float array.
+# 10k rows x 3 features is generous for this app (150 facilities) and
+# keeps a single request far below worker memory limits.
+MAX_BATCH = int(os.environ.get("PREDICT_MAX_BATCH", "10000"))
+
 app = FastAPI(title="Capstone prediction API")
 
 
@@ -88,6 +93,11 @@ def health() -> dict:
 def predict(req: PredictRequest) -> PredictResponse:
     if not req.instances:
         raise HTTPException(status_code=422, detail="instances is empty")
+    if len(req.instances) > MAX_BATCH:
+        raise HTTPException(
+            status_code=422,
+            detail=f"batch too large: {len(req.instances)} rows, "
+                   f"limit is {MAX_BATCH}")
     n_expected = len(_features)
     for i, row in enumerate(req.instances):
         if len(row) != n_expected:
