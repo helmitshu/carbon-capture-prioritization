@@ -27,11 +27,11 @@ def test_health():
 def test_predict_matches_local_model():
     bundle = joblib.load("model/registry/model_v2.pkl")
     tree = bundle["model"]
-    X = pd.read_csv("data/facility_labeled.csv")[FEATURES].to_numpy()
-    expected = tree.predict(X).tolist()
-    expected_leaves = tree.apply(X).astype(int).tolist()
+    df = pd.read_csv("data/facility_labeled.csv")[FEATURES]
+    expected = tree.predict(df).tolist()
+    expected_leaves = tree.apply(df).astype(int).tolist()
 
-    r = client.post("/predict", json={"instances": X.tolist()})
+    r = client.post("/predict", json={"instances": df.to_numpy().tolist()})
     assert r.status_code == 200
     body = r.json()
     assert body["predictions"] == expected
@@ -59,10 +59,15 @@ def test_predict_writes_log(tmp_path, monkeypatch):
     assert len(lines) == 1
     import json as _json
     rec = _json.loads(lines[0])
+    # Expected prediction comes from the model itself, not a hardcoded
+    # string, so this test survives a retrain.
+    bundle = joblib.load("model/registry/model_v2.pkl")
+    expected = bundle["model"].predict(
+        pd.DataFrame([[13.02, 3, 10]], columns=FEATURES)).tolist()
     assert rec["model_version"] == "v2"
     assert rec["n_instances"] == 1
     assert rec["instances"] == [[13.02, 3, 10]]
-    assert rec["predictions"] == ["CCS Candidate"]
+    assert rec["predictions"] == expected
     assert "ts" in rec and "latency_ms" in rec
 
 
@@ -73,6 +78,30 @@ def test_rejected_request_writes_no_log(tmp_path, monkeypatch):
     r = client.post("/predict", json={"instances": []})
     assert r.status_code == 422
     assert not log_file.exists()
+
+
+def test_predict_rejects_oversize_batch(monkeypatch):
+    import api.main as api_main
+    monkeypatch.setattr(api_main, "MAX_BATCH", 2)
+    r = client.post("/predict",
+                    json={"instances": [[13.0, 3, 10]] * 3})
+    assert r.status_code == 422
+    assert "batch too large" in r.json()["detail"]
+
+
+def test_client_falls_back_to_local_when_api_down(monkeypatch):
+    """The resilience path: API unreachable -> local bundle, app stays up."""
+    import requests as _requests
+    from model_client import get_tree_and_encoder
+
+    def _boom(*a, **k):
+        raise _requests.ConnectionError("api down")
+
+    monkeypatch.setattr("model_client.requests.get", _boom)
+    tree, le, source = get_tree_and_encoder()
+    assert source == "local"
+    preds = tree.predict(pd.DataFrame([[13.02, 3, 10]], columns=FEATURES))
+    assert preds[0] in ("CCS Candidate", "Potential CU Candidate")
 
 
 def test_structure_covers_walkthrough_needs():
@@ -119,9 +148,9 @@ def test_remote_client_matches_local():
         preds, leaves = predict_batch(fac, tree)
         bundle = joblib.load("model/registry/model_v2.pkl")
         assert (preds == bundle["model"].predict(
-            fac[FEATURES].to_numpy())).all()
+            fac[FEATURES])).all()
         assert (leaves == bundle["model"].apply(
-            fac[FEATURES].to_numpy())).all()
+            fac[FEATURES])).all()
         assert list(le.classes_) == list(bundle["encoder"].classes_)
         assert (tree.tree_.n_node_samples
                 == bundle["model"].tree_.n_node_samples).all()
