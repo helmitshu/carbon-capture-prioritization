@@ -11,6 +11,7 @@ it to its training data, metrics, and code.
 
 Usage:
     .venv/bin/python scripts/05_register_model.py [--version v1] [--stage production]
+                                                 [--training-date 2026-10-03]
 
 Idempotent: re-running with the same version overwrites the card and
 re-verifies the artifact.
@@ -64,11 +65,14 @@ def load_registry() -> dict:
     return {"versions": {}}
 
 
-def evaluate(bundle: dict, X: pd.DataFrame, y: pd.Series) -> dict:
-    """Recompute 5-fold stratified CV metrics for the registered model.
+def evaluate_protocol(X: pd.DataFrame, y: pd.Series) -> dict:
+    """Recompute 5-fold stratified CV metrics for the model configuration.
 
-    Uses the same MODEL_PARAMS / CV_PARAMS as training so the card
-    reflects the exact evaluation protocol from scripts/03.
+    This measures the training protocol (MODEL_PARAMS / CV_PARAMS), not
+    the registered artifact itself: the artifact is fit on the full
+    dataset, so cross-validated metrics can only come from refitting.
+    The card records the protocol explicitly so nobody mistakes these
+    for holdout metrics of the artifact.
     """
     tree = DecisionTreeClassifier(**MODEL_PARAMS)
     cv = StratifiedKFold(**CV_PARAMS)
@@ -97,12 +101,12 @@ def evaluate(bundle: dict, X: pd.DataFrame, y: pd.Series) -> dict:
     }
 
 
-def build_card(version: str, stage: str, bundle: dict) -> dict:
+def build_card(version: str, stage: str, training_date: str) -> dict:
     """Assemble the model card dict for this version."""
     above = pd.read_csv(SOURCE_DATA)
     X = above[FEATURES]
     y = above["priority"]
-    metrics = evaluate(bundle, X, y)
+    metrics = evaluate_protocol(X, y)
 
     return {
         "version": version,
@@ -129,7 +133,7 @@ def build_card(version: str, stage: str, bundle: dict) -> dict:
             "sha256": "",  # filled after the artifact copy is written
         },
         "training_script": "scripts/04_save_model.py",
-        "training_date": "2026-10-03",
+        "training_date": training_date,
         "registered_date": date.today().isoformat(),
         "lesson_spec": "AMII AI Pathways Technical Track, Capstone Project",
         "limitations": [
@@ -142,7 +146,15 @@ def build_card(version: str, stage: str, bundle: dict) -> dict:
     }
 
 
-def register(version: str, stage: str) -> Path:
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    """Write JSON atomically: temp file + rename, so a crash can never
+    leave a half-written registry index behind."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2) + "\n")
+    os.replace(tmp, path)
+
+
+def register(version: str, stage: str, training_date: str) -> Path:
     """Register SOURCE_ARTIFACT as `version`; return the card path."""
     if not SOURCE_ARTIFACT.exists():
         raise FileNotFoundError(f"missing source artifact: {SOURCE_ARTIFACT}")
@@ -168,12 +180,12 @@ def register(version: str, stage: str) -> Path:
                            "feature list mismatch")
 
     # 3. Model card.
-    card = build_card(version, stage, bundle)
+    card = build_card(version, stage, training_date)
     card["artifact"]["sha256"] = sha256_of(artifact_path)
     card_path = REGISTRY_DIR / f"model_{version}.card.json"
     card_path.write_text(json.dumps(card, indent=2) + "\n")
 
-    # 4. Registry index.
+    # 4. Registry index (atomic write).
     registry = load_registry()
     registry["versions"][version] = {
         "stage": stage,
@@ -182,7 +194,7 @@ def register(version: str, stage: str) -> Path:
         "artifact_sha256": card["artifact"]["sha256"],
         "registered_date": card["registered_date"],
     }
-    REGISTRY_INDEX.write_text(json.dumps(registry, indent=2) + "\n")
+    _atomic_write_json(REGISTRY_INDEX, registry)
 
     return card_path
 
@@ -195,9 +207,17 @@ def main() -> None:
     parser.add_argument("--stage", default="production",
                         choices=["staging", "production", "archived"],
                         help="lifecycle stage (default: production)")
+    parser.add_argument("--training-date", default=None,
+                        help="training date YYYY-MM-DD (default: the source "
+                             "artifact file's modification date)")
     args = parser.parse_args()
 
-    card_path = register(args.version, args.stage)
+    training_date = args.training_date
+    if training_date is None:
+        training_date = date.fromtimestamp(
+            SOURCE_ARTIFACT.stat().st_mtime).isoformat()
+
+    card_path = register(args.version, args.stage, training_date)
     card = json.loads(card_path.read_text())
     print(f"registered model_{args.version}.pkl "
           f"(stage={args.stage}, artifact verified)")

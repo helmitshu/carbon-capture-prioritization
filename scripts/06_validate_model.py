@@ -52,6 +52,16 @@ HIDDEN = PROJECT_ROOT / "hidden_files"
 
 EXPECTED_SCHEMA = FEATURES  # ["log_emissions", "naics_sector_encoded", "years_reported"]
 
+# Acceptance bars, the single source of truth. scripts/07_promote_model.py
+# imports these (via the gate module) instead of hardcoding its own copy,
+# so a bar change in one place applies everywhere. The human-readable
+# version lives in ACCEPTANCE_CRITERIA.md; these numbers must match it.
+DEFAULT_BARS = {
+    "min_accuracy": 0.70,
+    "min_ccs_f1": 0.80,
+    "min_cu_recall": 0.50,
+}
+
 
 @dataclass
 class CheckResult:
@@ -203,9 +213,12 @@ def main() -> None:
                     "before production promotion.")
     parser.add_argument("--version", required=True,
                         help="registry version to validate (e.g. v2)")
-    parser.add_argument("--min-accuracy", type=float, default=0.70)
-    parser.add_argument("--min-ccs-f1", type=float, default=0.80)
-    parser.add_argument("--min-cu-recall", type=float, default=0.50)
+    parser.add_argument("--min-accuracy", type=float,
+                        default=DEFAULT_BARS["min_accuracy"])
+    parser.add_argument("--min-ccs-f1", type=float,
+                        default=DEFAULT_BARS["min_ccs_f1"])
+    parser.add_argument("--min-cu-recall", type=float,
+                        default=DEFAULT_BARS["min_cu_recall"])
     args = parser.parse_args()
     bars = {"min_accuracy": args.min_accuracy,
             "min_ccs_f1": args.min_ccs_f1,

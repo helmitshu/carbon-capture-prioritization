@@ -56,7 +56,25 @@ def _read_index() -> dict:
 
 
 def _write_index(index: dict) -> None:
-    REGISTRY_INDEX.write_text(json.dumps(index, indent=2) + "\n")
+    """Atomic write: temp file + rename, so a crash can never leave a
+    half-written registry index behind."""
+    tmp = REGISTRY_INDEX.with_suffix(REGISTRY_INDEX.suffix + ".tmp")
+    tmp.write_text(json.dumps(index, indent=2) + "\n")
+    os.replace(tmp, REGISTRY_INDEX)
+
+
+def _set_card_stage(version: str, stage: str) -> None:
+    """Keep the version's card in sync with the registry index stage.
+
+    Without this the card keeps saying "staging" after promotion and the
+    two records disagree about what is live.
+    """
+    card_path = REGISTRY_DIR / f"model_{version}.card.json"
+    if not card_path.exists():
+        return
+    card = json.loads(card_path.read_text())
+    card["stage"] = stage
+    card_path.write_text(json.dumps(card, indent=2) + "\n")
 
 
 def promote(version: str, dry_run: bool = False) -> dict:
@@ -72,17 +90,20 @@ def promote(version: str, dry_run: bool = False) -> dict:
             f"not 'staging'")
 
     gate = _load_gate()
-    bars = {"min_accuracy": 0.70, "min_ccs_f1": 0.80, "min_cu_recall": 0.50}
+    # Bars come from the gate module: one source of truth, no local copy
+    # to drift out of sync with ACCEPTANCE_CRITERIA.md.
+    bars = dict(gate.DEFAULT_BARS)
+
+    previous = index.get("production")
+    if previous == version:
+        raise SystemExit(f"refusing: '{version}' is already production")
+
     report = gate.run_gate(version, bars)
     if not report.passed:
         failed = [c.name for c in report.checks if not c.passed]
         raise SystemExit(
             f"refusing: validation gate FAILED for '{version}': "
             f"{', '.join(failed)}")
-
-    previous = index.get("production")
-    if previous == version:
-        raise SystemExit(f"refusing: '{version}' is already production")
 
     result = {"promoted": version, "previous_production": previous,
               "dry_run": dry_run}
@@ -94,8 +115,10 @@ def promote(version: str, dry_run: bool = False) -> dict:
 
     if previous and previous in versions:
         versions[previous]["stage"] = "archived"
+        _set_card_stage(previous, "archived")
     entry["stage"] = "production"
     entry["promoted_date"] = date.today().isoformat()
+    _set_card_stage(version, "production")
     index["production"] = version
     _write_index(index)
     print(f"promoted '{version}' to production "
