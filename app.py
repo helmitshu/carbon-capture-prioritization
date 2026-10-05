@@ -1,6 +1,7 @@
-"""Capstone deployment app: CCS/CU priority screening for Alberta facilities."""
+"""Capstone deployment app: CCS/CU priority screening for Canadian facilities."""
 import hashlib
 import json
+import os
 import re
 import time
 
@@ -10,9 +11,12 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 import numpy as np
 import pandas as pd
+import joblib
 import streamlit as st
 
-from features import CO2_CUTOFF, FEATURES
+from features import (CO2_CUTOFF, FEATURES, encoder_categories,
+                      encoder_kind, encoder_values)
+from memo import render_memo_html, render_memo_pdf
 from model_client import get_tree_and_encoder, predict_batch
 
 GHGRP_URL = "https://open.canada.ca/data/en/dataset/a8ba14b7-7f23-462a-bdbb-83b0ef629823"
@@ -20,13 +24,49 @@ TIER_URL = "https://www.alberta.ca/technology-innovation-and-emissions-reduction
 
 st.set_page_config(page_title="CCS Priority Screening", layout="wide")
 
-# The model is served by the prediction API when reachable, with an
-# in-process fallback, so the app never goes down because the API does.
-tree, le, MODEL_SOURCE = get_tree_and_encoder()
-fac = pd.read_csv("model/facilities.csv")
-yearly = pd.read_csv("data/Capstone_Dataset_clean.csv")
-with open("model/meta.json", encoding="utf-8") as _mf:
-    META = json.load(_mf)
+# Model version switcher. The default comes from DEFAULT_MODEL_VERSION
+# ("v2" unless set to "v3"): the production service keeps the v2 default
+# while a staging service can set DEFAULT_MODEL_VERSION=v3 to open on the
+# national preview. The user can still switch manually afterwards.
+_default_label = ("v3 staging"
+                  if os.environ.get("DEFAULT_MODEL_VERSION", "v2").strip().lower() == "v3"
+                  else "v2 production")
+version_choice = st.sidebar.selectbox(
+    "Model version",
+    ["v2 production", "v3 staging"],
+    index=["v2 production", "v3 staging"].index(_default_label),
+    key="model_version",
+    help="v2 is the frozen production model for Alberta. v3 staging is the "
+         "national preview and always runs locally, never through the API.")
+IS_V3 = version_choice == "v3 staging"
+# Stale facility-scoped state from the other version would crash the
+# pickers (its ids are not in this version's table), so drop it on switch.
+_prev_version = st.session_state.get("_loaded_version")
+if _prev_version is not None and _prev_version != version_choice:
+    for _k in ("walk_pick", "walk", "walk_autorun", "screen_sector",
+               "screen_pick"):
+        st.session_state.pop(_k, None)
+st.session_state["_loaded_version"] = version_choice
+
+if IS_V3:
+    # Staging preview only: always the local bundle, never the API.
+    _bundle3 = joblib.load("model/model_v3.pkl")
+    assert list(_bundle3["features"]) == FEATURES, "v3 feature schema drift"
+    tree, le = _bundle3["model"], _bundle3["encoder"]
+    MODEL_SOURCE = "local (v3 staging)"
+    fac = pd.read_csv("model/facilities_v3.csv")
+    yearly = pd.read_csv("data/Capstone_Dataset_clean_national.csv")
+    META = {"n_facilities": len(fac),
+            "n_facilities_total": int(yearly["facility_id"].nunique()),
+            "n_yearly_rows": len(yearly)}
+else:
+    # v2 production: served by the prediction API when reachable, with an
+    # in-process fallback, so the app never goes down because the API does.
+    tree, le, MODEL_SOURCE = get_tree_and_encoder()
+    fac = pd.read_csv("model/facilities.csv")
+    yearly = pd.read_csv("data/Capstone_Dataset_clean.csv")
+    with open("model/meta.json", encoding="utf-8") as _mf:
+        META = json.load(_mf)
 # Model prediction for every facility, computed once. The Facilities table
 # shows this next to the rule-based label so the two never get mixed up.
 # One call (not predict+apply) so the remote path costs a single round trip.
@@ -149,8 +189,9 @@ def explain_path(row):
                 f"Average emissions {'below' if go_left else 'above'} "
                 f"{tonnes:,.0f} tonnes per year.")
         elif f == "naics_sector_encoded":
-            side = le.classes_[le.transform(le.classes_) <= thr] if go_left else \
-                le.classes_[le.transform(le.classes_) > thr]
+            _cats = np.array(encoder_categories(le))
+            _vals = encoder_values(le)
+            side = _cats[_vals <= thr] if go_left else _cats[_vals > thr]
             shown = ", ".join(side[:4])
             more = f" and {len(side) - 4} more" if len(side) > 4 else ""
             steps.append(
@@ -245,6 +286,94 @@ def confidence_banner(pred, row):
         f"extra skepticism and lean on the data.")
 
 
+def tier_badge(row):
+    """Panel agreement badge (v3 only: hidden when the column is absent).
+
+    Unanimous green, majority amber, contested red, plus the panel vote
+    count. When the panel majority disagrees with the tree verdict, say
+    so in one line: that is the review trigger, not a hidden detail.
+    """
+    if "verdict_tier" not in row.index:
+        return
+    tier = str(row["verdict_tier"])
+    try:
+        votes_txt = f"Panel: {int(row['panel_ccs_votes'])}/4"
+    except (TypeError, ValueError, KeyError):
+        votes_txt = "Panel: n/a"
+    green = "#2dd4bf" if dark else "#0f766e"
+    color = {"unanimous": green, "majority": AMBER, "contested": RED}.get(
+        tier, GRAY)
+    st.markdown(
+        f"<div style='display:inline-block;background:{PANEL_BG};"
+        f"border:1px solid {color};border-radius:8px;padding:6px 12px;"
+        f"margin:8px 0;'>"
+        f"<span style='font-weight:700;color:{color};font-size:14px;"
+        f"text-transform:capitalize;'>{tier}</span>"
+        f"<span style='color:{GRAY};font-size:13px;margin-left:8px;'>"
+        f"{votes_txt}</span></div>",
+        unsafe_allow_html=True)
+    if ("panel_majority" in row.index
+            and str(row["panel_majority"]) != str(row["model_prediction"])):
+        st.caption(f"Panel majority says {row['panel_majority']} but the "
+                   f"tree says {row['model_prediction']}. Needs human review.")
+
+
+def _memo_section(row, val_fn, reasons):
+    """One-click screening memo for a facility row. Pure memo.py underneath."""
+    st.write("**Screening memo**")
+    op = val_fn("company_trade")
+    if op == "Not reported":
+        op = val_fn("company_legal")
+    facility = {
+        "facility_name": str(row["facility_name"]),
+        "city": str(val_fn("city")),
+        "province": (str(row["province"])
+                     if "province" in row.index and pd.notna(row["province"])
+                     else "Alberta"),
+        "operator": str(op),
+        "sector": str(row["sector"]),
+        "avg_annual_emissions": float(row["avg_annual_emissions"]),
+        "co2_share": float(row["co2_share"]),
+        "years_reported": int(row["years_reported"]),
+        "priority": str(row["priority"]),
+        "model_prediction": str(row["model_prediction"]),
+        "data_through": str(int(yearly["year"].max())),
+    }
+    tier = (str(row["verdict_tier"])
+            if "verdict_tier" in row.index and pd.notna(row["verdict_tier"])
+            else "")
+    votes_raw = row["panel_ccs_votes"] if "panel_ccs_votes" in row.index else 0
+    votes = int(votes_raw) if pd.notna(votes_raw) else 0
+    mkey = f"memo_html_{row['facility_id']}"
+    if st.button("Generate screening memo",
+                 key=f"genmemo_{row['facility_id']}"):
+        st.session_state[mkey] = render_memo_html(
+            facility, reasons, tier, votes)
+    if mkey in st.session_state:
+        pkey = mkey + "__pdf"
+        if pkey not in st.session_state:
+            try:
+                st.session_state[pkey] = render_memo_pdf(
+                    st.session_state[mkey])
+            except ImportError:
+                st.session_state[pkey] = None
+        pdf = st.session_state[pkey]
+        if pdf is not None:
+            st.download_button(
+                "Download screening memo (PDF)", pdf,
+                file_name=f"screening_memo_{row['facility_id']}.pdf",
+                mime="application/pdf",
+                key=f"dlpdf_{row['facility_id']}")
+        else:
+            st.download_button(
+                "Download screening memo (HTML)", st.session_state[mkey],
+                file_name=f"screening_memo_{row['facility_id']}.html",
+                mime="text/html",
+                key=f"dlhtml_{row['facility_id']}")
+            st.caption("PDF needs WeasyPrint; running locally produces "
+                       "the PDF.")
+
+
 def share_bar(share):
     """CO2 share against the CCS cutoff. The decision, drawn."""
     pct = share * 100
@@ -315,7 +444,7 @@ def facility_profile(row):
         st.write(f"**CO2 share:** {row['co2_share']:.1%}, "
                  f"CH4 share: {row['ch4_share']:.1%}, N2O share: {row['n2o_share']:.1%}")
         st.write(f"**Years reported:** {int(row['years_reported'])}")
-        st.write(f"**TIER band:** {row['emission_band']}")
+        st.write(f"**{'Threshold' if IS_V3 else 'TIER'} band:** {row['emission_band']}")
     st.write("**Emissions history**")
     hist = yearly[yearly["facility_id"] == row["facility_id"]].sort_values("year")
     st.line_chart(hist.set_index("year")["total_emissions"])
@@ -325,9 +454,19 @@ def facility_profile(row):
     disagreement_banner(pred, row)
     borderline_banner(row)
     confidence_banner(pred, row)
+    tier_badge(row)
     st.write("**Why this result**")
     for i, s in enumerate(explain_path(row), 1):
         st.write(f"{i}. {s}")
+    verdict_reasons = [str(row[c]).strip()
+                       for c in ("reason_1", "reason_2", "reason_3")
+                       if c in row.index and pd.notna(row[c])
+                       and str(row[c]).strip()]
+    if verdict_reasons:
+        st.write("**Why this verdict**")
+        for i, r in enumerate(verdict_reasons, 1):
+            st.write(f"{i}. {r}")
+    _memo_section(row, _val, verdict_reasons)
 
 
 def references():
@@ -376,11 +515,17 @@ def tree_walk(row):
             q = f"Are average emissions \u2264 {np.expm1(thr):,.0f} tonnes/yr?"
             a = f"{np.expm1(val):,.0f} tonnes/yr"
         elif f == "naics_sector_encoded":
-            codes = le.transform(le.classes_)
-            side = le.classes_[codes <= thr] if go_left else le.classes_[codes > thr]
-            q = (f"Is the sector code \u2264 {thr:.0f}? "
-                 f"({len(side)} sectors go {'left' if go_left else 'right'})")
-            a = f"{row['sector']} (code {val:.0f})"
+            _cats = np.array(encoder_categories(le))
+            _vals = encoder_values(le)
+            side = _cats[_vals <= thr] if go_left else _cats[_vals > thr]
+            if encoder_kind(le) == "target":
+                q = (f"Is the sector candidate rate \u2264 {thr:.0%}? "
+                     f"({len(side)} sectors go {'left' if go_left else 'right'})")
+                a = f"{row['sector']} (rate {val:.0%})"
+            else:
+                q = (f"Is the sector code \u2264 {thr:.0f}? "
+                     f"({len(side)} sectors go {'left' if go_left else 'right'})")
+                a = f"{row['sector']} (code {val:.0f})"
         else:
             q = f"Was it reported for \u2264 {thr:.0f} years?"
             a = f"{val:.0f} years"
@@ -417,8 +562,9 @@ def _size_body(row, group):
 def _sector_body(row, group, leaf):
     s = group[-1]
     thr, go_left = s["thr"], s["left"]
-    codes = le.transform(le.classes_)
-    side = le.classes_[codes <= thr] if go_left else le.classes_[codes > thr]
+    _cats = np.array(encoder_categories(le))
+    _vals = encoder_values(le)
+    side = _cats[_vals <= thr] if go_left else _cats[_vals > thr]
     shown = ", ".join(side[:3])
     more = f" and {len(side) - 3} more" if len(side) > 3 else ""
     pred = _LEAF_PRED[leaf]
@@ -562,7 +708,10 @@ def draw_tree_diagram(path_nodes=()):
                 txt = (f"emissions \u2264\n{np.expm1(thr):,.0f} t/yr\n"
                        f"n={t.n_node_samples[n]}")
             elif f == "naics_sector_encoded":
-                txt = f"sector code \u2264 {thr:.0f}\nn={t.n_node_samples[n]}"
+                if encoder_kind(le) == "target":
+                    txt = f"sector rate \u2264 {thr:.0%}\nn={t.n_node_samples[n]}"
+                else:
+                    txt = f"sector code \u2264 {thr:.0f}\nn={t.n_node_samples[n]}"
             else:
                 txt = f"years \u2264 {thr:.0f}\nn={t.n_node_samples[n]}"
             if dark:
@@ -630,7 +779,7 @@ def pipeline_html():
         (f"{len(yearly):,}", "yearly rows reported to ECCC"),
         ("Clean", "dedupe + standardize"),
         (f"{META['n_facilities_total']:,}", "facilities after averaging years"),
-        (f"{len(fac)}", "above the 100k TIER line"),
+        (f"{len(fac)}", "above the 100k cutoff" if IS_V3 else "above the 100k TIER line"),
         ("Label", f"{CO2_CUTOFF:.0%} CO\u2082 rule \u2192 {n_ccs} CCS / {n_cu} CU"),
         (f"{len(FEATURES)}", "features: emissions, sector, years"),
         ("Tree", f"depth {tree.max_depth} \u2192 prediction + alerts"),
@@ -716,16 +865,29 @@ tab_about, tab_how, tab_screen, tab_facilities = st.tabs(
 
 with tab_about:
     st.subheader("What this is")
-    st.write("Alberta releases about 270 megatonnes of CO2 every year. Carbon "
-             "capture can trap it before it reaches the air, but it is expensive "
-             "and cannot go everywhere. The real question is simple. Where should "
-             "it go first.")
-    st.write("This tool answers that as a first pass. It reads public emissions "
-             "data for 1,199 Alberta industrial facilities and screens the best "
-             "candidates for carbon capture or carbon utilization. What used to "
-             "take months of manual review now takes minutes, across every "
-             "facility, not just the big names.")
-    st.write("Built as an AMII capstone project.")
+    if IS_V3:
+        st.write("Carbon capture can trap CO2 before it reaches the air, but "
+                 "it is expensive and cannot go everywhere. The real question "
+                 "is simple. Where should it go first.")
+        st.write("This tool answers that as a first pass. It reads public "
+                 f"emissions data for {META['n_facilities_total']:,} Canadian "
+                 "industrial facilities and screens the best candidates for "
+                 "carbon capture or carbon utilization. What used to take "
+                 "months of manual review now takes minutes, across every "
+                 "facility, not just the big names.")
+        st.write("Built as an AMII capstone project, extended to national "
+                 "screening.")
+    else:
+        st.write("Alberta releases about 270 megatonnes of CO2 every year. Carbon "
+                 "capture can trap it before it reaches the air, but it is expensive "
+                 "and cannot go everywhere. The real question is simple. Where should "
+                 "it go first.")
+        st.write("This tool answers that as a first pass. It reads public emissions "
+                 "data for 1,199 Alberta industrial facilities and screens the best "
+                 "candidates for carbon capture or carbon utilization. What used to "
+                 "take months of manual review now takes minutes, across every "
+                 "facility, not just the big names.")
+        st.write("Built as an AMII capstone project.")
     st.write("The visual version lives on the **How it works** tab: the full "
              "pipeline as a flow diagram, the tree itself, and an animated "
              "walkthrough of a facility going through it, question by question.")
@@ -742,27 +904,70 @@ with tab_about:
     st.subheader("Download the data")
     st.write("The full datasets, so anyone can check the work or redo it from scratch.")
     d1, d2 = st.columns(2)
-    with d1:
-        st.download_button("AMII dataset, as provided (CSV)",
-                           _file_bytes("data/Capstone_Dataset.csv"),
-                           file_name="Capstone_Dataset.csv",
-                           mime="text/csv",
-                           use_container_width=True)
-        st.caption("18,772 yearly records from the AMII course package, before "
-                   "any cleaning. The underlying source is ECCC's Greenhouse "
-                   "Gas Reporting Program [1].")
-    with d2:
-        st.download_button("Cleaned dataset (CSV)",
-                           _file_bytes("data/Capstone_Dataset_clean.csv"),
-                           file_name="Capstone_Dataset_clean.csv",
-                           mime="text/csv",
-                           use_container_width=True)
-        st.caption("6,999 rows after cleaning, the exact input the model "
-                   "trained on: Alberta-only filter, bilingual headers "
-                   "renamed, numeric types fixed, missing gas values set to "
-                   "zero, duplicates removed.")
+    if IS_V3:
+        with d1:
+            st.download_button("Cleaned national dataset (CSV)",
+                               _file_bytes("data/Capstone_Dataset_clean_national.csv"),
+                               file_name="Capstone_Dataset_clean_national.csv",
+                               mime="text/csv",
+                               use_container_width=True)
+            st.caption(f"{len(yearly):,} yearly records from {META['n_facilities_total']:,} "
+                       f"facilities, {int(yearly['year'].min())} to {int(yearly['year'].max())}. "
+                       "The exact input the v3 model trained on.")
+        with d2:
+            st.download_button("Labeled national facilities (CSV)",
+                               _file_bytes("data/facility_labeled_national.csv"),
+                               file_name="facility_labeled_national.csv",
+                               mime="text/csv",
+                               use_container_width=True)
+            st.caption(f"{len(fac)} above-threshold facilities with rule labels, "
+                       "panel votes, and verdict tiers.")
+    else:
+        with d1:
+            st.download_button("AMII dataset, as provided (CSV)",
+                               _file_bytes("data/Capstone_Dataset.csv"),
+                               file_name="Capstone_Dataset.csv",
+                               mime="text/csv",
+                               use_container_width=True)
+            st.caption("18,772 yearly records from the AMII course package, before "
+                       "any cleaning. The underlying source is ECCC's Greenhouse "
+                       "Gas Reporting Program [1].")
+        with d2:
+            st.download_button("Cleaned dataset (CSV)",
+                               _file_bytes("data/Capstone_Dataset_clean.csv"),
+                               file_name="Capstone_Dataset_clean.csv",
+                               mime="text/csv",
+                               use_container_width=True)
+            st.caption("6,999 rows after cleaning, the exact input the model "
+                       "trained on: Alberta-only filter, bilingual headers "
+                       "renamed, numeric types fixed, missing gas values set to "
+                       "zero, duplicates removed.")
     st.subheader("How the data was cleaned")
-    st.write("**How messy it was.** The file arrived with 18,772 yearly records "
+    if IS_V3:
+        st.write("**How messy it was.** The national file arrived with 18,771 "
+                 "yearly records across 2,743 facilities and 13 provinces and "
+                 "territories, every header written in English and French, "
+                 "covering 2004 to 2023 under changing reporting rules. 114 "
+                 "cells were empty, all of them NPRI ids. The good news: zero "
+                 "duplicated facility-year rows.")
+        st.write("**What we did.** Renamed the bilingual headers to short "
+                 "English names. Forced the emissions columns to numeric types "
+                 "so bad values could not sneak through. Grouped by GHGRP "
+                 "facility ID, not by name, because facilities get renamed "
+                 "across the years.")
+        st.write("**The result.** 18,771 clean rows, 2,743 facilities, years "
+                 "2004 to 2023, zero missing values in every column the model "
+                 "touches.")
+        st.write("**Limitations.** Three honest ones. The 100,000 tonne cutoff "
+                 "is a screening heuristic applied uniformly across provinces. "
+                 "It is not a regulatory threshold outside Alberta, so treat it "
+                 "as a triage line, not a legal one. Reporting rules changed "
+                 "over the 20 year window, so early years are thinner. And the "
+                 "starting file is the AMII course extract, not ECCC's raw "
+                 "publication, so the true original lives with the government "
+                 "source [1].")
+    else:
+        st.write("**How messy it was.** The file arrived with 18,772 yearly records "
              "and 17 columns, every header written in English and French, some "
              "over 100 characters long. 10,704 cells were empty, worst in "
              "company trade names (8,296 missing) and cities (1,866). It "
@@ -770,26 +975,26 @@ with tab_about:
              "rules, with 164 rows missing methane figures and 263 missing "
              "nitrous oxide. The good news: zero duplicated rows and zero "
              "zero-emission rows.")
-    st.write("**What we did.** Renamed all 17 bilingual headers to short "
-             "English names. Kept Alberta only, which cut the file to 6,999 "
-             "rows. Forced 8 columns to numeric types so bad values could not "
-             "sneak through. Filled missing gas figures with zero on the "
-             "documented assumption that not reported means none reported, "
-             "set missing cities to Unknown, and filled trade names from "
-             "legal names. Removed duplicates and zero-emission rows (none "
-             "were found, the check stays as a guard). Grouped by GHGRP "
-             "facility ID, not by name, because 232 facilities were renamed "
-             "across the years.")
-    st.write("**The result.** 6,999 clean rows, 1,199 facilities, years 2004 "
-             "to 2023, zero missing values in every column the model touches.")
-    st.write("**Limitations.** Four honest ones. Missing gas set to zero is "
-             "an assumption, and it slightly inflates CO2 share for those "
-             "rows. The 2004 reporting methodology differs (in 60 rows the "
-             "reported total does not match the sum of the gases), but "
-             "rerunning the screen without those rows changes no outcome. "
-             "This covers Alberta only. And the starting file is the AMII "
-             "course extract, not ECCC's raw publication, so the true "
-             "original lives with the government source [1].")
+        st.write("**What we did.** Renamed all 17 bilingual headers to short "
+                 "English names. Kept Alberta only, which cut the file to 6,999 "
+                 "rows. Forced 8 columns to numeric types so bad values could not "
+                 "sneak through. Filled missing gas figures with zero on the "
+                 "documented assumption that not reported means none reported, "
+                 "set missing cities to Unknown, and filled trade names from "
+                 "legal names. Removed duplicates and zero-emission rows (none "
+                 "were found, the check stays as a guard). Grouped by GHGRP "
+                 "facility ID, not by name, because 232 facilities were renamed "
+                 "across the years.")
+        st.write("**The result.** 6,999 clean rows, 1,199 facilities, years 2004 "
+                 "to 2023, zero missing values in every column the model touches.")
+        st.write("**Limitations.** Four honest ones. Missing gas set to zero is "
+                 "an assumption, and it slightly inflates CO2 share for those "
+                 "rows. The 2004 reporting methodology differs (in 60 rows the "
+                 "reported total does not match the sum of the gases), but "
+                 "rerunning the screen without those rows changes no outcome. "
+                 "This covers Alberta only. And the starting file is the AMII "
+                 "course extract, not ECCC's raw publication, so the true "
+                 "original lives with the government source [1].")
     references()
 
 with tab_how:
@@ -847,7 +1052,8 @@ with tab_how:
         leaf_card(wk["leaf"], wrow, wk["path"])
 
 with tab_screen:
-    st.write("Pick an Alberta industrial facility to see whether it screens as a "
+    _region = "a Canadian" if IS_V3 else "an Alberta"
+    st.write(f"Pick {_region} industrial facility to see whether it screens as a "
              "carbon capture candidate or a carbon utilization candidate, and why. "
              "Built on public emissions data [1].")
     s1, s2 = st.columns(2)
@@ -878,7 +1084,7 @@ with tab_screen:
         if int(row['years_reported']) <= 5:
             st.caption(f"Only {int(row['years_reported'])} years of data: "
                        f"averages are less stable.")
-        st.write(f"**TIER band:** {row['emission_band']}")
+        st.write(f"**{'Threshold' if IS_V3 else 'TIER'} band:** {row['emission_band']}")
     with right:
         st.subheader("At a glance")
         share_bar(row["co2_share"])
@@ -892,13 +1098,22 @@ with tab_screen:
     for i, s in enumerate(explain_path(row), 1):
         st.write(f"{i}. {s}")
     with st.expander("About this model"):
-        st.write("Decision Tree classifier, maximum depth 3, trained on 150 "
-                 "above-threshold Alberta facilities [2]. Features: log-scaled average "
-                 "emissions, encoded industry sector, years reported. Gas shares were "
-                 "excluded from features to avoid label leakage. Evaluated with "
-                 "5-fold stratified cross validation: accuracy 0.75, macro F1 0.62. "
-                 "CU precision is 0.30, so most CU predictions are actually CCS "
-                 "facilities: treat every CU flag as needing human review.")
+        if IS_V3:
+            st.write("Decision Tree classifier, maximum depth 3, trained on 454 "
+                     "above-threshold Canadian facilities. Features: log-scaled average "
+                     "emissions, target-encoded industry sector, years reported. Gas shares were "
+                     "excluded from features to avoid label leakage. Evaluated with "
+                     "5-fold stratified cross validation: accuracy 0.80, macro F1 0.74. "
+                     "A panel of four models votes on every facility: unanimous and "
+                     "majority verdicts are the steadiest, contested ones need human review.")
+        else:
+            st.write("Decision Tree classifier, maximum depth 3, trained on 150 "
+                     "above-threshold Alberta facilities [2]. Features: log-scaled average "
+                     "emissions, encoded industry sector, years reported. Gas shares were "
+                     "excluded from features to avoid label leakage. Evaluated with "
+                     "5-fold stratified cross validation: accuracy 0.75, macro F1 0.62. "
+                     "CU precision is 0.30, so most CU predictions are actually CCS "
+                     "facilities: treat every CU flag as needing human review.")
         st.write("Data: Environment and Climate Change Canada, Greenhouse Gas "
                  "Reporting Program, public dataset 2004 to 2023 [1].")
 
@@ -906,9 +1121,15 @@ with tab_facilities:
     st.write("Every screened facility, with its data source, the rule-based "
              "result, and the model prediction side by side. All figures "
              "come from Environment and Climate Change Canada's Greenhouse Gas "
-             "Reporting Program [1]. Facilities averaging at least 100,000 tonnes "
-             "CO2e per year fall under Alberta's TIER regulation [2] and form the "
-             "screening population. Select a row for the full facility profile.")
+             "Reporting Program [1]. " + (
+                 "Facilities averaging at least 100,000 tonnes CO2e per year "
+                 "form the national screening population: a screening cutoff, "
+                 "not a regulatory threshold outside Alberta. "
+                 if IS_V3 else
+                 "Facilities averaging at least 100,000 tonnes CO2e per year "
+                 "fall under Alberta's TIER regulation [2] and form the "
+                 "screening population. ") +
+             "Select a row for the full facility profile.")
     f1, f2, f3 = st.columns(3)
     with f1:
         q = st.text_input("Search by name")
