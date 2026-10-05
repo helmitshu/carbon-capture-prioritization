@@ -1,0 +1,29 @@
+{
+  "protocol": "TargetEncoder(smoothing=10, fit inside folds) + DecisionTreeClassifier(max_depth=3, min_samples_leaf=2, min_samples_split=6, class_weight=balanced) with StratifiedKFold(5, shuffle, rs=42), cross_val_predict. No leakage: encoder never sees the validation fold.",
+  "accuracy": 0.804,
+  "macro_avg": {
+    "precision": 0.719,
+    "recall": 0.8078,
+    "f1-score": 0.7401
+  },
+  "per_class": {
+    "CCS Candidate": {
+      "precision": 0.9486,
+      "recall": 0.8016,
+      "f1": 0.8689,
+      "support": 368
+    },
+    "Potential CU Candidate": {
+      "precision": 0.4895,
+      "recall": 0.814,
+      "f1": 0.6114,
+      "support": 86
+    }
+  },
+  "limitations": [
+    "National screening heuristic: the 100kt cutoff is not a regulation outside Alberta; it is a large-emitter screen.",
+    "CU class remains the weaker side; contested-tier facilities need human review, not silent verdicts.",
+    "Target-encoded sector means are noisiest for sectors with few facilities; smoothing=10 shrinks them toward the mean.",
+    "Single decision tree chosen for interpretability, not maximum performance (random forest scored +0.05 macro F1)."
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "order_of_operations": [
+    "inspect",
+    "rename",
+    "province_audit",
+    "missing_values_first",
+    "duplicate_checks",
+    "type_coercion",
+    "valid_emissions_filter",
+    "temporal_check"
+  ],
+  "raw_shape": [
+    18772,
+    17
+  ],
+  "raw_missing_by_column": {
+    "Facility City or District or Municipality / Ville ou District ou Municipalit\u00e9 de l'installation": 1866,
+    "Facility Province or Territory / Province ou territoire de l'installation": 1,
+    "Facility NPRI ID / Num\u00e9ro d'identification de l'INRP": 114,
+    "Reporting Company Trade Name / Nom commercial de la soci\u00e9t\u00e9 d\u00e9clarante": 8296,
+    "CH4 (tonnes)": 164,
+    "N2O (tonnes)": 263
+  },
+  "rows_by_province_raw": {
+    "Alberta": 6999,
+    "Ontario": 4180,
+    "Quebec": 2302,
+    "British Columbia": 2249,
+    "Saskatchewan": 1545,
+    "Manitoba": 432,
+    "New Brunswick": 330,
+    "Nova Scotia": 293,
+    "Newfoundland and Labrador": 209,
+    "Northwest Territories": 110,
+    "Nunavut": 59,
+    "Prince Edward Island": 36,
+    "Yukon": 27,
+    "nan": 1
+  },
+  "missing_province_rows_dropped": 1,
+  "missing_value_policy": {
+    "ch4_t_zero_filled_with_ch4_co2e_present": 164,
+    "n2o_t_zero_filled_with_n2o_co2e_present": 263,
+    "gas_tonnes_unresolvable_dropped": 0,
+    "trade_name_missing_before": 8296,
+    "trade_name_filled_by_ffill": 1213,
+    "trade_name_filled_by_legal_name": 7083,
+    "trade_name_still_missing": 0,
+    "city_filled_unknown": 1865
+  },
+  "exact_duplicate_rows": 0,
+  "facility_year_duplicate_rows": 0,
+  "type_coercion": {
+    "co2": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "ch4_t": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "ch4_co2e": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "n2o_t": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "n2o_co2e": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "total_emissions": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "year": {
+      "coerced_values": 0,
+      "examples": []
+    },
+    "naics_code": {
+      "coerced_values": 0,
+      "examples": []
+    }
+  },
+  "zero_or_null_total_emissions_dropped": 0,
+  "rows_by_year": {
+    "2004": 326,
+    "2005": 337,
+    "2006": 344,
+    "2007": 349,
+    "2008": 345,
+    "2009": 535,
+    "2010": 543,
+    "2011": 547,
+    "2012": 560,
+    "2013": 580,
+    "2014": 587,
+    "2015": 576,
+    "2016": 616,
+    "2017": 1709,
+    "2018": 1770,
+    "2019": 1789,
+    "2020": 1777,
+    "2021": 1782,
+    "2022": 1837,
+    "2023": 1862
+  },
+  "temporal_decision": "Kept all years 2004-2023, all provinces. Same rationale as v2: early years are thinner due to reporting-threshold history but complete on model-critical columns.",
+  "rows_by_province_clean": {
+    "Alberta": 6999,
+    "Ontario": 4180,
+    "Quebec": 2302,
+    "British Columbia": 2249,
+    "Saskatchewan": 1545,
+    "Manitoba": 432,
+    "New Brunswick": 330,
+    "Nova Scotia": 293,
+    "Newfoundland and Labrador": 209,
+    "Northwest Territories": 110,
+    "Nunavut": 59,
+    "Prince Edward Island": 36,
+    "Yukon": 27
+  },
+  "critical_columns_missing_after_cleaning": 0
+}
