@@ -1,5 +1,7 @@
 {
   "n_facilities": 150,
+  "n_facilities_total": 1199,
+  "n_yearly_rows": 6999,
   "classes": {
     "CCS Candidate": 130,
     "Potential CU Candidate": 20

@@ -1,0 +1,51 @@
+{
+  "version": "v2",
+  "passed": true,
+  "checks": [
+    {
+      "name": "artifact_integrity",
+      "passed": true,
+      "detail": "sha256 matches"
+    },
+    {
+      "name": "training_data_lineage",
+      "passed": true,
+      "detail": "training data matches card"
+    },
+    {
+      "name": "acceptance_accuracy",
+      "passed": true,
+      "detail": "0.7333 vs bar 0.70"
+    },
+    {
+      "name": "acceptance_ccs_f1",
+      "passed": true,
+      "detail": "0.8291 vs bar 0.80"
+    },
+    {
+      "name": "acceptance_cu_recall",
+      "passed": true,
+      "detail": "0.6500 vs bar 0.50"
+    },
+    {
+      "name": "schema_feature_names",
+      "passed": true,
+      "detail": "artifact features=['log_emissions', 'naics_sector_encoded', 'years_reported']"
+    },
+    {
+      "name": "schema_synthetic_predict",
+      "passed": true,
+      "detail": "predicted Potential CU Candidate"
+    },
+    {
+      "name": "sanity_full_coverage",
+      "passed": true,
+      "detail": "150 predictions, labels=['CCS Candidate', 'Potential CU Candidate']"
+    },
+    {
+      "name": "sanity_top_emitters_ccs",
+      "passed": true,
+      "detail": "top-3 emitters predicted ['CCS Candidate', 'CCS Candidate', 'CCS Candidate']"
+    }
+  ]
+}

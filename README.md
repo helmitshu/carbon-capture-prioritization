@@ -4,6 +4,20 @@ Machine learning screening of Alberta industrial facilities for carbon capture
 and storage (CCS) or carbon utilization (CU) deployment, built on public
 emissions data.
 
+## Live deployment (v2, current)
+
+This branch is the official production line. The original v1 app is retired.
+
+- Screening app: https://carbon-capture-app-v2-production.up.railway.app
+- Prediction API: https://carbon-capture-api-production.up.railway.app
+  (`/health`, `/predict`, `/model/structure`)
+
+The app talks to the API over JSON and falls back to the bundled model
+file if the API is unreachable, so it never goes down because the API does.
+Model versions are tracked in `model/registry/`; only versions that pass
+the validation gate (`scripts/06_validate_model.py`) may be promoted to
+production (`scripts/07_promote_model.py`).
+
 ## The problem
 
 Alberta emits roughly 270 megatonnes of CO2e per year. Carbon capture is

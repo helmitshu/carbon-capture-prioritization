@@ -6,7 +6,6 @@ and app.py all import from here instead of re-deriving features
 independently.
 """
 import numpy as np
-import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
 # ---- constants (previously scattered across scripts and app.py) ----
