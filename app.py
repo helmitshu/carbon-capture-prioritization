@@ -1116,6 +1116,21 @@ with tab_screen:
                      "facilities: treat every CU flag as needing human review.")
         st.write("Data: Environment and Climate Change Canada, Greenhouse Gas "
                  "Reporting Program, public dataset 2004 to 2023 [1].")
+    st.divider()
+    tier_badge(row)
+    y = yearly[yearly["facility_id"] == choice].sort_values("year")
+    latest = y.iloc[-1] if len(y) else None
+
+    def _screen_val(col):
+        if latest is not None and col in y.columns and pd.notna(latest[col]):
+            return latest[col]
+        return "Not reported"
+
+    screen_reasons = [str(row[c]).strip()
+                      for c in ("reason_1", "reason_2", "reason_3")
+                      if c in row.index and pd.notna(row[c])
+                      and str(row[c]).strip()]
+    _memo_section(row, _screen_val, screen_reasons)
 
 with tab_facilities:
     st.write("Every screened facility, with its data source, the rule-based "
