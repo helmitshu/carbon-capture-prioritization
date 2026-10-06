@@ -142,5 +142,5 @@ def test_registry_v3_staging_v2_still_production():
     assert reg["versions"]["v2"]["stage"] == "production"
     assert reg["production"] == "v2"
     card = json.load(open("model/registry/model_v3.card.json"))
-    assert card["data"]["n_facilities"] == 454
+    assert card["data"]["n_facilities"] == 457  # 2024 refresh
     assert card["metrics"]["accuracy"] >= 0.75

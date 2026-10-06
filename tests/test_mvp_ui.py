@@ -112,7 +112,7 @@ def test_v3_facilities_columns():
     assert set(fac["verdict_tier"].unique()) <= {
         "unanimous", "majority", "contested"}
     assert fac["panel_ccs_votes"].between(0, 4).all()
-    assert len(fac) == 454
+    assert len(fac) == 457  # 2024 refresh: 457 above the 100kt cutoff
 
 
 def test_encoder_helpers_match_legacy_v2_walkthrough():
