@@ -1,0 +1,32 @@
+{
+  "releases": [
+    {
+      "checksum_sha256": "d3f9142ef29b49bb43fea96c80681c72f03e486e0618ea67acccdab6e6706d1b",
+      "file": "ghgrp_2004-2023_retrieved_2026-10-03.csv",
+      "notes": "Baseline snapshot. Copied byte for byte from data/Capstone_Dataset.csv on 2026-10-06. data/Capstone_Dataset.csv itself stays in place for the v2 pipeline. Row counts are data rows (header excluded) for all releases.",
+      "release_id": "2004-2023",
+      "retrieval_date": "2026-10-03",
+      "rows": 18771,
+      "source": "ECCC Greenhouse Gas Reporting Program via open.canada.ca. Original download 2026-10-03, exact source URL was not recorded at the time.",
+      "years_covered": [
+        2004,
+        2023
+      ],
+      "schema_version": "v1"
+    },
+    {
+      "release_id": "2024",
+      "file": "ghgrp_2004-2024_retrieved_2026-10-06.csv",
+      "source": "ECCC Greenhouse Gas Reporting Program, ECCC Data Mart file PDGES-GHGRP-GHGEmissionsGES-2004-Present.csv (https://data-donnees.ec.gc.ca, catalogue path substances/monitor/greenhouse-gas-reporting-program-ghgrp-facility-greenhouse-gas-ghg-data). Dataset page: https://open.canada.ca/data/en/dataset/a8ba14b7-7f23-462a-bdbb-83b0ef629823. File last modified 2026-07-24.",
+      "retrieval_date": "2026-10-06",
+      "years_covered": [
+        2004,
+        2024
+      ],
+      "rows": 20685,
+      "checksum_sha256": "f3ba90bcd0dae34dc375e05ec0b9b065f51956ad6b9ff2de1f9c6e5e1afbea41",
+      "schema_version": "v2",
+      "notes": "Full re-pull per locked decision. Schema v2: 82 columns. Total emissions column renamed by ECCC to '... - excl. CO2bio'. Verified comparable to the old total on 2023 overlap: 1731 of 1854 matched facilities exact, median relative diff 0.0, 50 facilities revised over 1 percent (ECCC revisions). Definition note: the v2 total explicitly excludes biogenic CO2 (CO2bio); the v1 total carried no such qualifier. Overlap verified comparable, but analysts comparing pre/post-refresh totals for biomass reporters should account for this."
+    }
+  ]
+}
