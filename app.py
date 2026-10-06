@@ -67,6 +67,39 @@ else:
     yearly = pd.read_csv("data/Capstone_Dataset_clean.csv")
     with open("model/meta.json", encoding="utf-8") as _mf:
         META = json.load(_mf)
+
+
+@st.cache_data
+def _v3_data_facts():
+    """Facts for the About copy, derived from the loaded data.
+
+    Hardcoded record counts rot on every data refresh, so the About
+    tab reads them here instead. v3 only; the v2 line stays frozen.
+    """
+    facts = {
+        "year_min": int(yearly["year"].min()),
+        "year_max": int(yearly["year"].max()),
+        "clean_rows": len(yearly),
+        "clean_facilities": int(yearly["facility_id"].nunique()),
+        "n_above_threshold": int(META.get("n_facilities", 0)),
+    }
+    facts["n_years"] = facts["year_max"] - facts["year_min"] + 1
+    try:
+        with open("hidden_files/cleaning_report_national.json",
+                  encoding="utf-8") as _rf:
+            _rep = json.load(_rf)
+        facts["raw_rows"] = int(_rep.get("raw_shape", [0])[0])
+        facts["raw_facilities"] = int(_rep.get("raw_n_facilities", 0))
+        _miss = _rep.get("raw_missing_by_column", {})
+        _npri_key = next((k for k in _miss if "NPRI ID" in k), None)
+        facts["npri_missing"] = int(_miss[_npri_key]) if _npri_key else 0
+    except (OSError, ValueError, KeyError):
+        facts["raw_rows"] = facts["clean_rows"]
+        facts["raw_facilities"] = facts["clean_facilities"]
+        facts["npri_missing"] = 0
+    return facts
+
+
 # Model prediction for every facility, computed once. The Facilities table
 # shows this next to the rule-based label so the two never get mixed up.
 # One call (not predict+apply) so the remote path costs a single round trip.
@@ -325,6 +358,7 @@ def _econ_summary(row):
     envelope lives in the generated memo.
     """
     from economics import facility_economics
+    from assumptions import CARBON_PRICE_DECK, assumption_value
     co2 = (float(row["co2_share"]) if "co2_share" in row.index
            and pd.notna(row["co2_share"]) else 1.0)
     econ = facility_economics(float(row["avg_annual_emissions"]),
@@ -340,13 +374,15 @@ def _econ_summary(row):
     with c2:
         st.write(f"**2030 carbon liability:** "
                  f"~${econ['liability_2030_cad'] / 1e6:,.0f}M per year")
-        st.caption(f"At the revised $115 per tonne federal schedule. "
+        st.caption(f"At the ${CARBON_PRICE_DECK['schedule'][2030]:,.0f} per tonne federal schedule. "
                    f"~${econ['abatable_liability_2030_cad'] / 1e6:,.0f}M "
                    f"abatable at {econ['co2_share']:.0%} CO2.")
     with c3:
         st.write(f"**Indicative CCUS tax credit:** "
                  f"~${econ['itc']['credit_cad'] / 1e6:,.0f}M refundable")
-        st.caption("50% capture equipment, 37.5% transport storage and use.")
+        _itc_rates = assumption_value("ccus_itc")
+        st.caption(f"{_itc_rates['capture_other'] * 100:g}% capture equipment, "
+                   f"{_itc_rates['transport_storage_use'] * 100:g}% transport storage and use.")
     st.caption("Illustrative build assumptions. The memo carries the full "
                "envelope with every assumption labeled.")
 
@@ -387,6 +423,29 @@ def _econ_charts(row):
     plt.close(fig)
     st.caption("Capture beats the tax only below the dashed line, and "
                "only on the CO2 fraction of emissions.")
+
+
+def _assumptions_panel():
+    """Visible assumptions and sources for the v3 economics layer.
+
+    Every figure in the economics strip rests on one of these
+    assumptions. Each row shows the value, its source, and when it was
+    last verified. Anything past its review period is flagged in plain
+    language so it never goes stale quietly.
+    """
+    from assumptions import assumption_status
+    st.divider()
+    with st.expander("Assumptions and sources"):
+        st.write("Every economics figure above rests on one of these "
+                 "assumptions. Flagged rows are past their review date.")
+        for a in assumption_status():
+            line = f"**{a['name']}:** {a['value_text']} {a['unit']}"
+            if a["overdue"]:
+                st.warning(f"Due for review. {line}. {a['status_text']}")
+            else:
+                st.write(line)
+            st.caption(f"Source: {a['source']} Last verified "
+                       f"{a['last_verified']}. Review {a['review']}.")
 
 
 def _memo_section(row, val_fn, reasons):
@@ -1016,25 +1075,30 @@ with tab_about:
                        "zero, duplicates removed.")
     st.subheader("How the data was cleaned")
     if IS_V3:
-        st.write("**How messy it was.** The national file arrived with 18,771 "
-                 "yearly records across 2,743 facilities and 13 provinces and "
-                 "territories, every header written in English and French, "
-                 "covering 2004 to 2023 under changing reporting rules. 114 "
-                 "cells were empty, all of them NPRI ids. The good news: zero "
-                 "duplicated facility-year rows.")
+        _df = _v3_data_facts()
+        st.write(f"**How messy it was.** The national file arrived with "
+                 f"{_df['raw_rows']:,} yearly records across "
+                 f"{_df['raw_facilities']:,} facilities and 13 provinces and "
+                 f"territories, every header written in English and French, "
+                 f"covering {_df['year_min']} to {_df['year_max']} under "
+                 f"changing reporting rules. {_df['npri_missing']:,} cells "
+                 f"were empty, all of them NPRI ids. The good news: zero "
+                 f"duplicated facility-year rows.")
         st.write("**What we did.** Renamed the bilingual headers to short "
                  "English names. Forced the emissions columns to numeric types "
                  "so bad values could not sneak through. Grouped by GHGRP "
                  "facility ID, not by name, because facilities get renamed "
                  "across the years.")
-        st.write("**The result.** 18,771 clean rows, 2,743 facilities, years "
-                 "2004 to 2023, zero missing values in every column the model "
-                 "touches.")
+        st.write(f"**The result.** {_df['clean_rows']:,} clean rows, "
+                 f"{_df['clean_facilities']:,} facilities, years "
+                 f"{_df['year_min']} to {_df['year_max']}, zero missing values "
+                 f"in every column the model touches.")
         st.write("**Limitations.** Three honest ones. The 100,000 tonne cutoff "
                  "is a screening heuristic applied uniformly across provinces. "
                  "It is not a regulatory threshold outside Alberta, so treat it "
                  "as a triage line, not a legal one. Reporting rules changed "
-                 "over the 20 year window, so early years are thinner. And the "
+                 f"over the {_df['n_years']} year window, so early years are "
+                 f"thinner. And the "
                  "starting file is the AMII course extract, not ECCC's raw "
                  "publication, so the true original lives with the government "
                  "source [1].")
@@ -1171,8 +1235,10 @@ with tab_screen:
         st.write(f"{i}. {s}")
     with st.expander("About this model"):
         if IS_V3:
-            st.write("Decision Tree classifier, maximum depth 3, trained on 454 "
-                     "above-threshold Canadian facilities. Features: log-scaled average "
+            _df2 = _v3_data_facts()
+            st.write(f"Decision Tree classifier, maximum depth 3, trained on "
+                     f"{_df2['n_above_threshold']} "
+                     f"above-threshold Canadian facilities. Features: log-scaled average "
                      "emissions, target-encoded industry sector, years reported. Gas shares were "
                      "excluded from features to avoid label leakage. Evaluated with "
                      "5-fold stratified cross validation: accuracy 0.80, macro F1 0.74. "
@@ -1186,8 +1252,13 @@ with tab_screen:
                      "5-fold stratified cross validation: accuracy 0.75, macro F1 0.62. "
                      "CU precision is 0.30, so most CU predictions are actually CCS "
                      "facilities: treat every CU flag as needing human review.")
-        st.write("Data: Environment and Climate Change Canada, Greenhouse Gas "
-                 "Reporting Program, public dataset 2004 to 2023 [1].")
+        if IS_V3:
+            st.write(f"Data: Environment and Climate Change Canada, Greenhouse Gas "
+                     f"Reporting Program, public dataset {_df2['year_min']} to "
+                     f"{_df2['year_max']} [1].")
+        else:
+            st.write("Data: Environment and Climate Change Canada, Greenhouse Gas "
+                     "Reporting Program, public dataset 2004 to 2023 [1].")
     st.divider()
     tier_badge(row)
     y = yearly[yearly["facility_id"] == choice].sort_values("year")
@@ -1205,6 +1276,7 @@ with tab_screen:
     if IS_V3:
         _econ_summary(row)
         _econ_charts(row)
+        _assumptions_panel()
     _memo_section(row, _screen_val, screen_reasons)
 
 with tab_facilities:

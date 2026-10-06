@@ -7,7 +7,8 @@ Every assumption is labeled where it surfaces in the memo or the app.
 Writing rules for user-facing copy: commas and periods only, plain
 phrasing, no personal names.
 
-Sources (checked October 2026):
+Sources (checked October 2026): see assumptions.py, the single source
+of truth. The per band detail:
 - Capture cost bands: IEA 2025 reporting (pre-combustion hydrogen
   USD 38-52/t, post-combustion cement USD 68-95/t), post-combustion
   retrofit combined cycle USD 57-68/t, high purity streams
@@ -27,63 +28,48 @@ Sources (checked October 2026):
 """
 from __future__ import annotations
 
-from memo import CARBON_PRICE_DECK
+from assumptions import CARBON_PRICE_DECK, assumption_value, get_assumption
 
 # Illustrative FX assumption, October 2026. Paid memos use the
 # prevailing rate.
-FX_USD_CAD = 1.43
+FX_USD_CAD = assumption_value("fx_usd_cad")
 
 # Capture cost bands in USD per tonne of CO2, (low, base, high).
 # These are levelized capture-only costs from public benchmarks.
+_BAND_ORDER = ("high_purity", "hydrogen_precombustion",
+               "power_postcombustion", "cement", "industry_default")
 _CAPTURE_BANDS_USD = {
-    "high_purity": (15.0, 25.0, 35.0),
-    "hydrogen_precombustion": (38.0, 45.0, 52.0),
-    "power_postcombustion": (57.0, 62.0, 68.0),
-    "cement": (68.0, 82.0, 95.0),
-    "industry_default": (60.0, 90.0, 120.0),
+    band: tuple(assumption_value(f"capture_band_{band}"))
+    for band in _BAND_ORDER
 }
 
 _BAND_SOURCES = {
-    "high_purity": "High purity streams over 90% CO2, USD 15-35 per tonne.",
-    "hydrogen_precombustion": "IEA 2025, pre-combustion hydrogen, USD 38-52 per tonne.",
-    "power_postcombustion": "Post-combustion retrofit combined cycle, USD 57-68 per tonne.",
-    "cement": "IEA 2025, post-combustion cement, USD 68-95 per tonne.",
-    "industry_default": "Illustrative industry band, USD 60-120 per tonne.",
+    band: get_assumption(f"capture_band_{band}")["source"]
+    for band in _BAND_ORDER
 }
 
 # Keyword map from facility sector names to cost bands. Sectors not
 # listed fall back to industry_default.
-_SECTOR_BANDS = {
-    "Cement Manufacturing": "cement",
-    "Lime Manufacturing": "cement",
-    "Glass Manufacturing": "cement",
-    "Fossil-Fuel Electric Power Generation": "power_postcombustion",
-    "Other Electric Power Generation": "power_postcombustion",
-    "Steam and Air-Conditioning Supply": "power_postcombustion",
-    "Chemical Fertilizer (except Potash) Manufacturing": "high_purity",
-    "Industrial Gas Manufacturing": "high_purity",
-}
+_SECTOR_BANDS = dict(assumption_value("sector_band_map"))
 
 # Transport plus storage adder, USD per tonne (pipeline 3-4 plus
 # storage 3.50-7.50, Global CCS Institute).
-TS_ADDER_USD = (7.0, 12.0)
+TS_ADDER_USD = tuple(assumption_value("ts_adder_usd"))
 
+_ITC_RATES = assumption_value("ccus_itc")
 CCUS_ITC = {
-    "capture_dac": 0.60,
-    "capture_other": 0.50,
-    "transport_storage_use": 0.375,
-    "eor_factor": 0.5,
-    "halve_from_year": 2036,
-    "source": ("IEA policy tracker, June 2026. Standard rates for "
-               "dedicated geological storage, 2022 to 2035. EOR at half "
-               "rates from April 28, 2026 per the 2026 Spring Economic "
-               "Update. All rates halve from 2036 to 2040."),
+    "capture_dac": _ITC_RATES["capture_dac"],
+    "capture_other": _ITC_RATES["capture_other"],
+    "transport_storage_use": _ITC_RATES["transport_storage_use"],
+    "eor_factor": _ITC_RATES["eor_factor"],
+    "halve_from_year": _ITC_RATES["halve_from_year"],
+    "source": get_assumption("ccus_itc")["source"],
 }
 
 # Illustrative build assumptions, labeled wherever they surface.
-CAPTURE_RATE = 0.90
-CAPEX_PER_TPA_CAD = 800.0
-CAPEX_SPLIT_CAPTURE = 0.70  # share of capex treated as capture equipment
+CAPTURE_RATE = assumption_value("capture_rate")
+CAPEX_PER_TPA_CAD = assumption_value("capex_per_tpa_cad")
+CAPEX_SPLIT_CAPTURE = assumption_value("capex_split_capture")  # share of capex treated as capture equipment
 
 
 def _s(value) -> str:

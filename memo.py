@@ -12,18 +12,18 @@ from __future__ import annotations
 
 import datetime
 
+from assumptions import assumption_value
+
 # Federal carbon price schedule, CAD per tonne CO2e.
+# Centralized in assumptions.py, the single source of truth.
 # Source: Federal benchmark revised May 15, 2026.
-CARBON_PRICE_DECK = {
-    "currency": "CAD",
-    "unit": "per tonne CO2e",
-    "schedule": {2026: 95, 2027: 100, 2028: 100, 2029: 100, 2030: 115},
-    "source": "Federal benchmark revised May 15, 2026",
-}
+from assumptions import CARBON_PRICE_DECK
 
 _MEMO_PRICE_2030 = CARBON_PRICE_DECK["schedule"][2030]  # 115 CAD/t
-_CAPTURE_RATE = 0.90      # illustrative capture rate
-_CAPEX_PER_TPA = 800      # illustrative CAD per tonne-per-annum build cost
+_MEMO_CAPTURE_RATE = assumption_value("capture_rate")  # illustrative capture rate
+_MEMO_CAPEX_PER_TPA = assumption_value("capex_per_tpa_cad")  # illustrative CAD per tonne-per-annum build cost
+_CAPTURE_RATE = _MEMO_CAPTURE_RATE
+_CAPEX_PER_TPA = _MEMO_CAPEX_PER_TPA
 
 _TIER_CLASSES = {"unanimous": "tier-unanimous",
                  "majority": "tier-majority",
@@ -166,12 +166,12 @@ def _econ_section_v31(emissions: float, sector: str, co2_share: float,
   <tr><th>Line</th><th>Figure</th><th>Basis</th></tr>
   <tr><td>Annual CO2e available ({data_through})</td><td>{_fmt_mt(emissions)}</td><td>Reported</td></tr>
   <tr><td>CO2 share of emissions</td><td>{co2_share:.0%}</td><td>Reported</td></tr>
-  <tr><td>Indicative capture rate of the CO2 fraction</td><td>90%</td><td>Illustrative</td></tr>
+  <tr><td>Indicative capture rate of the CO2 fraction</td><td>{assumption_value("capture_rate"):.0%}</td><td>Illustrative</td></tr>
   <tr><td>Indicative captured volume</td><td>{_fmt_mt(captured)} per year</td><td>Calculated</td></tr>
   <tr><td>Sector capture cost band</td><td>${band["low_cad"]:,.0f} to ${band["high_cad"]:,.0f} per tonne</td><td>{_s(band["source"])}</td></tr>
   <tr><td>Transport and storage adder</td><td>${ts_low:,.0f} to ${ts_high:,.0f} per tonne</td><td>Global CCS Institute, pipeline plus storage.</td></tr>
   <tr><td>Indicative capex envelope</td><td>~{_fmt_money(econ["capex_cad"])}</td><td>Illustrative, at industry average build cost</td></tr>
-  <tr><td>Federal CCUS investment tax credit</td><td>~{_fmt_money(itc["credit_cad"])} refundable</td><td>50% capture equipment, 37.5% transport storage and use. Source: IEA policy tracker, June 2026.</td></tr>
+  <tr><td>Federal CCUS investment tax credit</td><td>~{_fmt_money(itc["credit_cad"])} refundable</td><td>{itc["capture_rate"] * 100:g}% capture equipment, {itc["tsu_rate"] * 100:g}% transport storage and use. Source: IEA policy tracker, June 2026.</td></tr>
   <tr><td>Net capex after credit</td><td>~{_fmt_money(econ["net_capex_cad"])}</td><td>Calculated</td></tr>
   <tr><td>Carbon liability at ${_MEMO_PRICE_2030}/t (2030 revised schedule)</td><td>~{_fmt_money(liability)} per year</td><td>{_fmt_mt(emissions)} at revised 2030 price. Source: {deck["source"]}.</td></tr>
   <tr><td>Abatable slice of the liability ({co2_share:.0%} CO2)</td><td>~{_fmt_money(abatable)} per year</td><td>Calculated. Capture can only address the CO2 fraction.</td></tr>
