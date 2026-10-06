@@ -208,3 +208,48 @@ def facility_economics(avg_annual_emissions: float, sector: str,
              "liability, not the full regulatory bill."),
         ],
     }
+
+
+def econ_chart_data(avg_annual_emissions: float, sector: str,
+                    co2_share: float = 1.0) -> dict:
+    """Chart-ready numbers for the v3 economics visuals.
+
+    Everything derives from facility_economics, so the charts can
+    never disagree with the text figures. The emissions mix is in
+    CO2e tonnes: non-CO2 gases are shown at their CO2-equivalent
+    weight, which is also how the federal carbon price treats them.
+    """
+    econ = facility_economics(avg_annual_emissions, sector,
+                             co2_share=co2_share)
+    emissions = econ["emissions_tonnes"]
+    share = econ["co2_share"]
+    co2_co2e = emissions * share
+    other_co2e = emissions - co2_co2e
+    price_2030 = CARBON_PRICE_DECK["schedule"][2030]
+    band = econ["band"]
+    return {
+        "econ": econ,
+        "total_co2e": round(emissions, 2),
+        "mix": [
+            {"label": "CO2", "co2e": round(co2_co2e, 2), "share": share,
+             "note": "Capturable fraction"},
+            {"label": "Other GHGs", "co2e": round(other_co2e, 2),
+             "share": 1 - share,
+             "note": "Mostly methane, shown in CO2-equivalent tonnes"},
+        ],
+        "liability": {
+            "total": econ["liability_2030_cad"],
+            "abatable": econ["abatable_liability_2030_cad"],
+            "locked_in": round(econ["liability_2030_cad"]
+                               - econ["abatable_liability_2030_cad"], 2),
+            "price_per_tonne": price_2030,
+            "price_source": CARBON_PRICE_DECK["source"],
+        },
+        "cost_band": {
+            "low": band["low_cad"],
+            "base": band["base_cad"],
+            "high": band["high_cad"],
+            "carbon_price": float(price_2030),
+            "band_source": band["source"],
+        },
+    }

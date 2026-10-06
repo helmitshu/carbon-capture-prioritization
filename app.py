@@ -340,13 +340,53 @@ def _econ_summary(row):
     with c2:
         st.write(f"**2030 carbon liability:** "
                  f"~${econ['liability_2030_cad'] / 1e6:,.0f}M per year")
-        st.caption("At the revised $115 per tonne federal schedule.")
+        st.caption(f"At the revised $115 per tonne federal schedule. "
+                   f"~${econ['abatable_liability_2030_cad'] / 1e6:,.0f}M "
+                   f"abatable at {econ['co2_share']:.0%} CO2.")
     with c3:
         st.write(f"**Indicative CCUS tax credit:** "
                  f"~${econ['itc']['credit_cad'] / 1e6:,.0f}M refundable")
         st.caption("50% capture equipment, 37.5% transport storage and use.")
     st.caption("Illustrative build assumptions. The memo carries the full "
                "envelope with every assumption labeled.")
+
+
+def _econ_charts(row):
+    """v3-only economics visuals on the Screening detail view.
+
+    Three charts, one story: how much of the emissions is CO2, how
+    much of the carbon bill capture can address, and whether capture
+    beats the carbon price. Figures come from econ_charts builders,
+    which read the same economics module as the text.
+    """
+    from econ_charts import (cost_band_chart, emissions_mix_donut,
+                            liability_split_bar)
+    from economics import econ_chart_data
+    co2 = (float(row["co2_share"]) if "co2_share" in row.index
+           and pd.notna(row["co2_share"]) else 1.0)
+    args = (float(row["avg_annual_emissions"]), str(row["sector"]), co2)
+    liab_total = econ_chart_data(*args)["liability"]["total"]
+
+    fig = emissions_mix_donut(*args)
+    st.pyplot(fig)
+    plt.close(fig)
+    st.caption("Non-CO2 gases are shown in CO2-equivalent tonnes, the "
+               "same basis the federal carbon price uses. Only the CO2 "
+               "slice can be captured.")
+
+    liab_total = econ_chart_data(*args)["liability"]["total"]
+    fig = liability_split_bar(*args)
+    st.pyplot(fig)
+    plt.close(fig)
+    st.caption(f"The full ${liab_total / 1e6:,.1f}M is the real bill: the "
+               f"federal price applies per tonne of CO2e. Capture can "
+               f"only address the teal slice.")
+
+    fig = cost_band_chart(*args)
+    st.pyplot(fig)
+    plt.close(fig)
+    st.caption("Capture beats the tax only below the dashed line, and "
+               "only on the CO2 fraction of emissions.")
 
 
 def _memo_section(row, val_fn, reasons):
@@ -1164,6 +1204,7 @@ with tab_screen:
                       and str(row[c]).strip()]
     if IS_V3:
         _econ_summary(row)
+        _econ_charts(row)
     _memo_section(row, _screen_val, screen_reasons)
 
 with tab_facilities:
