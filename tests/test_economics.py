@@ -89,6 +89,36 @@ def test_facility_economics_labels_every_assumption():
     assert "benchmark" in joined
 
 
+def test_facility_economics_scales_by_co2_share():
+    full = facility_economics(1_000_000.0, "Cement Manufacturing",
+                             co2_share=1.0)
+    part = facility_economics(1_000_000.0, "Cement Manufacturing",
+                             co2_share=0.26)
+    # The regulatory liability uses total CO2e in both cases.
+    assert part["liability_2030_cad"] == pytest.approx(
+        full["liability_2030_cad"])
+    # Everything capture related scales by the CO2 share.
+    assert part["captured_tonnes"] == pytest.approx(
+        full["captured_tonnes"] * 0.26)
+    assert part["abatable_liability_2030_cad"] == pytest.approx(
+        full["liability_2030_cad"] * 0.26)
+    assert part["capex_cad"] == pytest.approx(full["capex_cad"] * 0.26)
+    # The margin is measured against the abatable slice, not the bill.
+    assert part["margin_vs_abatable_cad"]["base"] == pytest.approx(
+        part["abatable_liability_2030_cad"]
+        - part["annual_capture_cost_cad"]["base"])
+    joined = " ".join(part["assumptions"]).lower()
+    assert "co2 share" in joined
+    assert "abatable slice" in joined
+
+
+def test_memo_v31_shows_abatable_liability():
+    html = render_memo_html(_facility(co2_share=0.26), [], "", 0,
+                            economics="v31")
+    assert "Abatable slice of the liability" in html
+    assert "CO2 share of emissions" in html
+
+
 def test_memo_v31_has_sourced_economics():
     html = render_memo_html(_facility(), ["Reason one."], "unanimous", 4,
                             economics="v31")
