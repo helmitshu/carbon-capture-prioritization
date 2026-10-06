@@ -5,8 +5,8 @@ Pure functions only; no Streamlit runner is needed.
 import pytest
 
 from economics import (CCUS_ITC, FX_USD_CAD, capture_cost_band,
-                       carbon_liability_cad, facility_economics,
-                       itc_credit_cad)
+                       carbon_liability_cad, econ_chart_data,
+                       facility_economics, itc_credit_cad)
 from memo import CARBON_PRICE_DECK, render_memo_html
 
 
@@ -141,3 +141,49 @@ def test_economics_copy_has_no_em_dashes():
         assert "\u2014" not in a and "\u2013" not in a
     html = render_memo_html(_facility(), [], "", 0, economics="v31")
     assert "\u2014" not in html and "\u2013" not in html
+
+
+def test_chart_data_mix_sums_to_emissions():
+    d = econ_chart_data(219341.0, "Animal (except Poultry) Slaughtering",
+                        co2_share=0.26)
+    assert sum(m["co2e"] for m in d["mix"]) == pytest.approx(
+        d["total_co2e"])
+    assert sum(m["share"] for m in d["mix"]) == pytest.approx(1.0)
+    assert d["mix"][0]["label"] == "CO2"
+    assert d["mix"][0]["share"] == pytest.approx(0.26)
+    assert d["mix"][0]["co2e"] == pytest.approx(219341.0 * 0.26)
+
+
+def test_chart_data_liability_split_adds_up():
+    d = econ_chart_data(1_000_000.0, "Cement Manufacturing",
+                        co2_share=0.92)
+    liab = d["liability"]
+    assert liab["abatable"] + liab["locked_in"] == pytest.approx(
+        liab["total"])
+    assert liab["abatable"] == pytest.approx(liab["total"] * 0.92)
+    assert liab["price_per_tonne"] == CARBON_PRICE_DECK["schedule"][2030]
+    assert liab["price_source"]
+
+
+def test_chart_data_cost_band_ordered_against_carbon_price():
+    d = econ_chart_data(500_000.0, "Petroleum Refineries")
+    cb = d["cost_band"]
+    assert cb["low"] < cb["base"] < cb["high"]
+    assert cb["carbon_price"] == pytest.approx(115.0)
+    assert cb["band_source"]
+
+
+def test_chart_figures_build_without_error():
+    import matplotlib.pyplot as plt
+    from econ_charts import (cost_band_chart, emissions_mix_donut,
+                            liability_split_bar)
+    args = (219341.0, "Animal (except Poultry) Slaughtering", 0.26)
+    for builder in (emissions_mix_donut, liability_split_bar,
+                    cost_band_chart):
+        fig = builder(*args)
+        assert isinstance(fig, plt.Figure)
+        plt.close(fig)
+    # Full CO2 share edge case: no zero-division, no empty figure.
+    fig = emissions_mix_donut(1_000_000.0, "Cement Manufacturing", 1.0)
+    assert isinstance(fig, plt.Figure)
+    plt.close(fig)
