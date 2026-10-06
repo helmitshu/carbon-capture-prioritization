@@ -142,36 +142,45 @@ def itc_credit_cad(capex_capture_cad: float, capex_tsu_cad: float,
 
 
 def facility_economics(avg_annual_emissions: float, sector: str,
+                       co2_share: float = 1.0,
                        capture_rate: float = CAPTURE_RATE,
                        capex_per_tpa_cad: float = CAPEX_PER_TPA_CAD,
                        eor: bool = False, year: int = 2026) -> dict:
     """Indicative per-facility CCS economics, all figures in CAD.
 
+    The carbon liability is the true regulatory figure: the federal
+    price applies per tonne of CO2e, so it uses total emissions.
+    Everything capture related scales by co2_share, because only the
+    CO2 fraction can be captured, and the margin is measured against
+    the abatable slice of the liability, not the full bill.
     Every input that is not measured is an illustrative assumption and
     is labeled as such in the returned assumption notes.
     """
     emissions = float(avg_annual_emissions or 0)
+    co2_share = min(max(float(co2_share or 0), 0.0), 1.0)
     band = capture_cost_band(sector)
-    captured = emissions * capture_rate
+    captured = emissions * co2_share * capture_rate
     capex = captured * capex_per_tpa_cad
     capex_capture = capex * CAPEX_SPLIT_CAPTURE
     capex_tsu = capex * (1 - CAPEX_SPLIT_CAPTURE)
     itc = itc_credit_cad(capex_capture, capex_tsu, eor=eor, year=year)
     net_capex = capex - itc["credit_cad"]
     liability_2030 = carbon_liability_cad(emissions, 2030)
+    abatable_2030 = liability_2030 * co2_share
 
     annual_cost = {}
     margin = {}
     for level in ("low", "base", "high"):
         cost = captured * band[f"{level}_cad"]
         annual_cost[level] = round(cost, 2)
-        margin[level] = round(liability_2030 - cost, 2)
+        margin[level] = round(abatable_2030 - cost, 2)
 
     ts_low = round(TS_ADDER_USD[0] * FX_USD_CAD, 2)
     ts_high = round(TS_ADDER_USD[1] * FX_USD_CAD, 2)
 
     return {
         "emissions_tonnes": emissions,
+        "co2_share": co2_share,
         "captured_tonnes": round(captured, 2),
         "band": band,
         "ts_adder_cad": (ts_low, ts_high),
@@ -182,9 +191,12 @@ def facility_economics(avg_annual_emissions: float, sector: str,
         "net_capex_cad": round(net_capex, 2),
         "annual_capture_cost_cad": annual_cost,
         "liability_2030_cad": round(liability_2030, 2),
-        "margin_vs_liability_cad": margin,
+        "abatable_liability_2030_cad": round(abatable_2030, 2),
+        "margin_vs_abatable_cad": margin,
         "assumptions": [
-            f"Capture rate {capture_rate:.0%}, illustrative.",
+            f"Capture rate {capture_rate:.0%} of the CO2 fraction, illustrative.",
+            (f"CO2 share {co2_share:.0%} of reported emissions. Only this "
+             "fraction is treated as capturable."),
             (f"Build cost ${capex_per_tpa_cad:,.0f} per tonne per annum, "
              "illustrative."),
             (f"Capex split {CAPEX_SPLIT_CAPTURE:.0%} capture equipment, "
@@ -192,5 +204,7 @@ def facility_economics(avg_annual_emissions: float, sector: str,
              "illustrative."),
             (f"FX {FX_USD_CAD} CAD per USD, October 2026, illustrative."),
             "Capture cost bands are public benchmarks, not site engineering.",
+            ("Margin is measured against the abatable slice of the carbon "
+             "liability, not the full regulatory bill."),
         ],
     }

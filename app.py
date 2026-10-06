@@ -325,8 +325,10 @@ def _econ_summary(row):
     envelope lives in the generated memo.
     """
     from economics import facility_economics
+    co2 = (float(row["co2_share"]) if "co2_share" in row.index
+           and pd.notna(row["co2_share"]) else 1.0)
     econ = facility_economics(float(row["avg_annual_emissions"]),
-                             str(row["sector"]))
+                             str(row["sector"]), co2_share=co2)
     band = econ["band"]
     st.divider()
     st.write("**Indicative economics**")

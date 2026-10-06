@@ -131,26 +131,29 @@ def _econ_section_legacy(emissions: float, data_through: str,
 <p class="note">Capture costs are illustrative placeholders. Site engineering sets the real number, which is exactly what the recommended next steps price out.</p>"""
 
 
-def _econ_section_v31(emissions: float, sector: str, data_through: str,
-                      deck: dict, deck_line: str) -> str:
+def _econ_section_v31(emissions: float, sector: str, co2_share: float,
+                      data_through: str, deck: dict, deck_line: str) -> str:
     """Sourced economics envelope for v3.1.
 
     Sector capture cost bands and the federal CCUS investment tax
-    credit replace the flat illustrative table. Deferred import keeps
+    credit replace the flat illustrative table. Capture volumes scale
+    by the facility CO2 share, and the margin is measured against the
+    abatable slice of the carbon liability. Deferred import keeps
     economics.py (which imports this module) free of a cycle.
     """
     from economics import facility_economics
-    econ = facility_economics(emissions, sector)
+    econ = facility_economics(emissions, sector, co2_share=co2_share)
     band = econ["band"]
     captured = econ["captured_tonnes"]
     liability = econ["liability_2030_cad"]
+    abatable = econ["abatable_liability_2030_cad"]
     itc = econ["itc"]
     ts_low, ts_high = econ["ts_adder_cad"]
     sens_rows = ""
     for level, label in (("low", "Low case"), ("base", "Base case"),
                          ("high", "High case")):
         cost = econ["annual_capture_cost_cad"][level]
-        margin = econ["margin_vs_liability_cad"][level]
+        margin = econ["margin_vs_abatable_cad"][level]
         sens_rows += (f"<tr><td>{label}, "
                       f"${band[f'{level}_cad']:,.0f} per tonne</td>"
                       f"<td>{_fmt_money(cost)}</td>"
@@ -161,8 +164,9 @@ def _econ_section_v31(emissions: float, sector: str, data_through: str,
 <p>This section puts sourced public benchmarks around the investment question. Every assumption is labeled. A paid memo runs your commercial assumptions and current data.</p>
 <table class="econ">
   <tr><th>Line</th><th>Figure</th><th>Basis</th></tr>
-  <tr><td>Annual CO2 available ({data_through})</td><td>{_fmt_mt(emissions)}</td><td>Reported</td></tr>
-  <tr><td>Indicative capture rate</td><td>90%</td><td>Illustrative</td></tr>
+  <tr><td>Annual CO2e available ({data_through})</td><td>{_fmt_mt(emissions)}</td><td>Reported</td></tr>
+  <tr><td>CO2 share of emissions</td><td>{co2_share:.0%}</td><td>Reported</td></tr>
+  <tr><td>Indicative capture rate of the CO2 fraction</td><td>90%</td><td>Illustrative</td></tr>
   <tr><td>Indicative captured volume</td><td>{_fmt_mt(captured)} per year</td><td>Calculated</td></tr>
   <tr><td>Sector capture cost band</td><td>${band["low_cad"]:,.0f} to ${band["high_cad"]:,.0f} per tonne</td><td>{_s(band["source"])}</td></tr>
   <tr><td>Transport and storage adder</td><td>${ts_low:,.0f} to ${ts_high:,.0f} per tonne</td><td>Global CCS Institute, pipeline plus storage.</td></tr>
@@ -170,10 +174,11 @@ def _econ_section_v31(emissions: float, sector: str, data_through: str,
   <tr><td>Federal CCUS investment tax credit</td><td>~{_fmt_money(itc["credit_cad"])} refundable</td><td>50% capture equipment, 37.5% transport storage and use. Source: IEA policy tracker, June 2026.</td></tr>
   <tr><td>Net capex after credit</td><td>~{_fmt_money(econ["net_capex_cad"])}</td><td>Calculated</td></tr>
   <tr><td>Carbon liability at ${_MEMO_PRICE_2030}/t (2030 revised schedule)</td><td>~{_fmt_money(liability)} per year</td><td>{_fmt_mt(emissions)} at revised 2030 price. Source: {deck["source"]}.</td></tr>
+  <tr><td>Abatable slice of the liability ({co2_share:.0%} CO2)</td><td>~{_fmt_money(abatable)} per year</td><td>Calculated. Capture can only address the CO2 fraction.</td></tr>
 </table>
 <p>The federal carbon price was revised in May 2026: {deck_line}. Against that, the levelized capture cost at this site decides the project:</p>
 <table class="econ">
-  <tr><th>Capture cost case</th><th>Annual cost on {_fmt_mt(captured)}</th><th>Margin vs {_fmt_money(liability)} liability</th></tr>
+  <tr><th>Capture cost case</th><th>Annual cost on {_fmt_mt(captured)}</th><th>Margin vs {_fmt_money(abatable)} abatable liability</th></tr>
 {sens_rows}
 </table>
 <p class="note">Capture cost bands are public benchmarks for the sector, not site engineering. The recommended next steps price the real number.</p>
@@ -255,7 +260,7 @@ def render_memo_html(facility: dict, reasons: list[str], tier: str,
         emissions, data_through, deck, deck_line)
     if economics == "v31":
         econ_section = _econ_section_v31(
-            emissions, sector, data_through, deck, deck_line)
+            emissions, sector, co2_share, data_through, deck, deck_line)
 
     date_str = datetime.date.today().strftime("%B %Y")
     if client_name and _s(client_name):
