@@ -99,8 +99,90 @@ def _tier_badge_html(tier: str, panel_votes: int) -> str:
             f'{_s(tier)}</span></div>')
 
 
+def _econ_section_legacy(emissions: float, data_through: str,
+                         deck: dict, deck_line: str) -> str:
+    """Original illustrative economics table. v2 behavior, frozen."""
+    liability = emissions * _MEMO_PRICE_2030
+    captured = emissions * _CAPTURE_RATE
+    capex = captured * _CAPEX_PER_TPA
+    sens_rows = ""
+    for rate in (60, 90, 120):
+        cost = captured * rate
+        margin = liability - cost
+        sens_rows += (f"<tr><td>${rate} per tonne</td>"
+                      f"<td>{_fmt_money(cost)}</td>"
+                      f"<td>{'+' if margin >= 0 else ''}"
+                      f"{_fmt_money(margin)}</td></tr>")
+    return f"""<h2>4. Illustrative economics envelope</h2>
+<p>This section shows the shape of the investment question. Labeled figures are illustrative placeholders showing the format. A paid memo runs your commercial assumptions.</p>
+<table class="econ">
+  <tr><th>Line</th><th>Figure</th><th>Basis</th></tr>
+  <tr><td>Annual CO2 available ({data_through})</td><td>{_fmt_mt(emissions)}</td><td>Reported</td></tr>
+  <tr><td>Illustrative capture rate</td><td>90%</td><td>Illustrative</td></tr>
+  <tr><td>Illustrative captured volume</td><td>{_fmt_mt(captured)} per year</td><td>Calculated</td></tr>
+  <tr><td>Illustrative capex envelope</td><td>~{_fmt_money(capex)}</td><td>Illustrative, at industry average build cost</td></tr>
+  <tr><td>Carbon liability at ${_MEMO_PRICE_2030}/t (2030 revised schedule)</td><td>~{_fmt_money(liability)} per year</td><td>{_fmt_mt(emissions)} at revised 2030 price. Source: {deck["source"]}.</td></tr>
+</table>
+<p>The federal carbon price was revised in May 2026: {deck_line}. Against that, the question is the levelized cost of capture at this site:</p>
+<table class="econ">
+  <tr><th>Illustrative capture cost</th><th>Annual cost on {_fmt_mt(captured)}</th><th>Margin vs {_fmt_money(liability)} liability</th></tr>
+{sens_rows}
+</table>
+<p class="note">Capture costs are illustrative placeholders. Site engineering sets the real number, which is exactly what the recommended next steps price out.</p>"""
+
+
+def _econ_section_v31(emissions: float, sector: str, data_through: str,
+                      deck: dict, deck_line: str) -> str:
+    """Sourced economics envelope for v3.1.
+
+    Sector capture cost bands and the federal CCUS investment tax
+    credit replace the flat illustrative table. Deferred import keeps
+    economics.py (which imports this module) free of a cycle.
+    """
+    from economics import facility_economics
+    econ = facility_economics(emissions, sector)
+    band = econ["band"]
+    captured = econ["captured_tonnes"]
+    liability = econ["liability_2030_cad"]
+    itc = econ["itc"]
+    ts_low, ts_high = econ["ts_adder_cad"]
+    sens_rows = ""
+    for level, label in (("low", "Low case"), ("base", "Base case"),
+                         ("high", "High case")):
+        cost = econ["annual_capture_cost_cad"][level]
+        margin = econ["margin_vs_liability_cad"][level]
+        sens_rows += (f"<tr><td>{label}, "
+                      f"${band[f'{level}_cad']:,.0f} per tonne</td>"
+                      f"<td>{_fmt_money(cost)}</td>"
+                      f"<td>{'+' if margin >= 0 else ''}"
+                      f"{_fmt_money(margin)}</td></tr>")
+    assumptions = " ".join(_s(a) for a in econ["assumptions"])
+    return f"""<h2>4. Indicative economics envelope</h2>
+<p>This section puts sourced public benchmarks around the investment question. Every assumption is labeled. A paid memo runs your commercial assumptions and current data.</p>
+<table class="econ">
+  <tr><th>Line</th><th>Figure</th><th>Basis</th></tr>
+  <tr><td>Annual CO2 available ({data_through})</td><td>{_fmt_mt(emissions)}</td><td>Reported</td></tr>
+  <tr><td>Indicative capture rate</td><td>90%</td><td>Illustrative</td></tr>
+  <tr><td>Indicative captured volume</td><td>{_fmt_mt(captured)} per year</td><td>Calculated</td></tr>
+  <tr><td>Sector capture cost band</td><td>${band["low_cad"]:,.0f} to ${band["high_cad"]:,.0f} per tonne</td><td>{_s(band["source"])}</td></tr>
+  <tr><td>Transport and storage adder</td><td>${ts_low:,.0f} to ${ts_high:,.0f} per tonne</td><td>Global CCS Institute, pipeline plus storage.</td></tr>
+  <tr><td>Indicative capex envelope</td><td>~{_fmt_money(econ["capex_cad"])}</td><td>Illustrative, at industry average build cost</td></tr>
+  <tr><td>Federal CCUS investment tax credit</td><td>~{_fmt_money(itc["credit_cad"])} refundable</td><td>50% capture equipment, 37.5% transport storage and use. Source: IEA policy tracker, June 2026.</td></tr>
+  <tr><td>Net capex after credit</td><td>~{_fmt_money(econ["net_capex_cad"])}</td><td>Calculated</td></tr>
+  <tr><td>Carbon liability at ${_MEMO_PRICE_2030}/t (2030 revised schedule)</td><td>~{_fmt_money(liability)} per year</td><td>{_fmt_mt(emissions)} at revised 2030 price. Source: {deck["source"]}.</td></tr>
+</table>
+<p>The federal carbon price was revised in May 2026: {deck_line}. Against that, the levelized capture cost at this site decides the project:</p>
+<table class="econ">
+  <tr><th>Capture cost case</th><th>Annual cost on {_fmt_mt(captured)}</th><th>Margin vs {_fmt_money(liability)} liability</th></tr>
+{sens_rows}
+</table>
+<p class="note">Capture cost bands are public benchmarks for the sector, not site engineering. The recommended next steps price the real number.</p>
+<p class="note">Assumptions: {assumptions}</p>"""
+
+
 def render_memo_html(facility: dict, reasons: list[str], tier: str,
-                     panel_votes: int, client_name: str = "") -> str:
+                     panel_votes: int, client_name: str = "",
+                     economics: str = "legacy") -> str:
     """Render a screening memo as an HTML string.
 
     facility keys used (all optional, sensible fallbacks): facility_name,
@@ -109,6 +191,9 @@ def render_memo_html(facility: dict, reasons: list[str], tier: str,
     data_through. reasons is the panel reason list (may be empty).
     tier is one of unanimous/majority/contested (or "" to omit).
     client_name="" keeps the SAMPLE banner; a name removes it.
+    economics="legacy" keeps the original illustrative economics table
+    (v2 behavior, frozen). economics="v31" uses the sourced sector
+    cost bands and CCUS tax credit from economics.py (v3 only).
     """
     f = {k: _s(v) for k, v in facility.items()}
     name = f.get("facility_name", "Unnamed facility")
@@ -160,19 +245,17 @@ def render_memo_html(facility: dict, reasons: list[str], tier: str,
         reasons_html = ("<li>No panel reasons were recorded for this "
                         "facility.</li>")
 
-    # Illustrative economics. Only the carbon liability uses a sourced
-    # price; everything else is labeled illustrative.
-    liability = emissions * _MEMO_PRICE_2030
-    captured = emissions * _CAPTURE_RATE
-    capex = captured * _CAPEX_PER_TPA
-    sens_rows = ""
-    for rate in (60, 90, 120):
-        cost = captured * rate
-        margin = liability - cost
-        sens_rows += (f"<tr><td>${rate} per tonne</td>"
-                      f"<td>{_fmt_money(cost)}</td>"
-                      f"<td>{'+' if margin >= 0 else ''}"
-                      f"{_fmt_money(margin)}</td></tr>")
+    deck = CARBON_PRICE_DECK
+    sched = deck["schedule"]
+    deck_line = (f"${sched[2026]} per tonne in 2026, ${sched[2027]} per "
+                 f"tonne from 2027 through 2029, rising to "
+                 f"${sched[2030]} per tonne in 2030")
+
+    econ_section = _econ_section_legacy(
+        emissions, data_through, deck, deck_line)
+    if economics == "v31":
+        econ_section = _econ_section_v31(
+            emissions, sector, data_through, deck, deck_line)
 
     date_str = datetime.date.today().strftime("%B %Y")
     if client_name and _s(client_name):
@@ -184,11 +267,6 @@ def render_memo_html(facility: dict, reasons: list[str], tier: str,
                  'FIGURES, NOT INVESTMENT ADVICE</div>')
         prepared_for = "Sample client (not a real engagement)"
         classification = "Sample. Illustrative figures throughout."
-    deck = CARBON_PRICE_DECK
-    sched = deck["schedule"]
-    deck_line = (f"${sched[2026]} per tonne in 2026, ${sched[2027]} per "
-                 f"tonne from 2027 through 2029, rising to "
-                 f"${sched[2030]} per tonne in 2030")
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -266,22 +344,7 @@ def render_memo_html(facility: dict, reasons: list[str], tier: str,
 {reasons_html}
 </ul>
 
-<h2>4. Illustrative economics envelope</h2>
-<p>This section shows the shape of the investment question. Labeled figures are illustrative placeholders showing the format. A paid memo runs your commercial assumptions.</p>
-<table class="econ">
-  <tr><th>Line</th><th>Figure</th><th>Basis</th></tr>
-  <tr><td>Annual CO2 available ({data_through})</td><td>{_fmt_mt(emissions)}</td><td>Reported</td></tr>
-  <tr><td>Illustrative capture rate</td><td>90%</td><td>Illustrative</td></tr>
-  <tr><td>Illustrative captured volume</td><td>{_fmt_mt(captured)} per year</td><td>Calculated</td></tr>
-  <tr><td>Illustrative capex envelope</td><td>~{_fmt_money(capex)}</td><td>Illustrative, at industry average build cost</td></tr>
-  <tr><td>Carbon liability at ${_MEMO_PRICE_2030}/t (2030 revised schedule)</td><td>~{_fmt_money(liability)} per year</td><td>{_fmt_mt(emissions)} at revised 2030 price. Source: {deck["source"]}.</td></tr>
-</table>
-<p>The federal carbon price was revised in May 2026: {deck_line}. Against that, the question is the levelized cost of capture at this site:</p>
-<table class="econ">
-  <tr><th>Illustrative capture cost</th><th>Annual cost on {_fmt_mt(captured)}</th><th>Margin vs {_fmt_money(liability)} liability</th></tr>
-{sens_rows}
-</table>
-<p class="note">Capture costs are illustrative placeholders. Site engineering sets the real number, which is exactly what the recommended next steps price out.</p>
+{econ_section}
 
 <div class="pagebreak"></div>
 {strip}

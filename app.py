@@ -318,6 +318,35 @@ def tier_badge(row):
                    f"tree says {row['model_prediction']}. Needs human review.")
 
 
+def _econ_summary(row):
+    """Compact v3-only economics strip on the Screening detail view.
+
+    Sourced public benchmarks with labeled assumptions. The full
+    envelope lives in the generated memo.
+    """
+    from economics import facility_economics
+    econ = facility_economics(float(row["avg_annual_emissions"]),
+                             str(row["sector"]))
+    band = econ["band"]
+    st.divider()
+    st.write("**Indicative economics**")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.write(f"**Capture cost band:** "
+                 f"${band['low_cad']:,.0f} to ${band['high_cad']:,.0f} per tonne")
+        st.caption("Sector public benchmarks, not site engineering.")
+    with c2:
+        st.write(f"**2030 carbon liability:** "
+                 f"~${econ['liability_2030_cad'] / 1e6:,.0f}M per year")
+        st.caption("At the revised $115 per tonne federal schedule.")
+    with c3:
+        st.write(f"**Indicative CCUS tax credit:** "
+                 f"~${econ['itc']['credit_cad'] / 1e6:,.0f}M refundable")
+        st.caption("50% capture equipment, 37.5% transport storage and use.")
+    st.caption("Illustrative build assumptions. The memo carries the full "
+               "envelope with every assumption labeled.")
+
+
 def _memo_section(row, val_fn, reasons):
     """One-click screening memo for a facility row. Pure memo.py underneath."""
     st.write("**Screening memo**")
@@ -348,7 +377,8 @@ def _memo_section(row, val_fn, reasons):
     if st.button("Generate screening memo",
                  key=f"genmemo_{row['facility_id']}"):
         st.session_state[mkey] = render_memo_html(
-            facility, reasons, tier, votes)
+            facility, reasons, tier, votes,
+            economics="v31" if IS_V3 else "legacy")
     if mkey in st.session_state:
         pkey = mkey + "__pdf"
         if pkey not in st.session_state:
@@ -1130,6 +1160,8 @@ with tab_screen:
                       for c in ("reason_1", "reason_2", "reason_3")
                       if c in row.index and pd.notna(row[c])
                       and str(row[c]).strip()]
+    if IS_V3:
+        _econ_summary(row)
     _memo_section(row, _screen_val, screen_reasons)
 
 with tab_facilities:
