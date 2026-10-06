@@ -149,3 +149,33 @@ def test_pdf_builds_when_weasyprint_available():
     pdf = render_memo_pdf(
         render_memo_html(_facility(), ["Reason one."], "unanimous", 4))
     assert pdf[:4] == b"%PDF"
+
+
+def test_screening_tab_detail_calls_memo_section():
+    """Regression: the Screening tab detail view must wire the memo button.
+
+    The memo section used to exist only in facility_profile (Facilities tab),
+    so the primary detail view had no 'Generate screening memo' button.
+    Static check on app.py source: _memo_section must be invoked inside the
+    Screening tab block (between 'with tab_screen' and 'with tab_facilities').
+    """
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parent.parent.joinpath(
+        "app.py").read_text()
+    start = src.index("with tab_screen:")
+    end = src.index("with tab_facilities:")
+    screening_block = src[start:end]
+    assert "_memo_section(" in screening_block, (
+        "Screening tab detail view does not call _memo_section")
+
+
+def test_screening_tab_detail_shows_tier_badge():
+    """The Screening tab detail view must show the panel tier badge too."""
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parent.parent.joinpath(
+        "app.py").read_text()
+    start = src.index("with tab_screen:")
+    end = src.index("with tab_facilities:")
+    screening_block = src[start:end]
+    assert "tier_badge(row)" in screening_block, (
+        "Screening tab detail view does not show the tier badge")
