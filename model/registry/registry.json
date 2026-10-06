@@ -19,8 +19,8 @@
       "stage": "staging",
       "card": "model_v3.card.json",
       "artifact": "model_v3.pkl",
-      "artifact_sha256": "e8cdd2769e0af5127954181620c2e2d4584f1070350b873ca71341efa957b1d9",
-      "registered_date": "2026-10-05"
+      "artifact_sha256": "9e9107460caac8277f9b1f20b3cff1374d26020bfd1c8d14ebed9b958e9bbe58",
+      "registered_date": "2026-10-06"
     }
   },
   "production": "v2"

@@ -21,45 +21,45 @@
   "label_rule": "co2_share >= 0.85 -> CCS Candidate else Potential CU Candidate (gas shares excluded from features: label leakage)",
   "metrics": {
     "protocol": "TargetEncoder(smoothing=10, fit inside folds) + DecisionTreeClassifier(max_depth=3, min_samples_leaf=2, min_samples_split=6, class_weight=balanced) with StratifiedKFold(5, shuffle, rs=42), cross_val_predict. No leakage: encoder never sees the validation fold.",
-    "accuracy": 0.804,
+    "accuracy": 0.7987,
     "macro_avg": {
-      "precision": 0.719,
-      "recall": 0.8078,
+      "precision": 0.7205,
+      "recall": 0.8224,
       "f1-score": 0.7401
     },
     "per_class": {
       "CCS Candidate": {
-        "precision": 0.9486,
-        "recall": 0.8016,
-        "f1": 0.8689,
-        "support": 368
+        "precision": 0.9604,
+        "recall": 0.7844,
+        "f1": 0.8635,
+        "support": 371
       },
       "Potential CU Candidate": {
-        "precision": 0.4895,
-        "recall": 0.814,
-        "f1": 0.6114,
+        "precision": 0.4805,
+        "recall": 0.8605,
+        "f1": 0.6167,
         "support": 86
       }
     }
   },
   "data": {
     "training_file": "facility_labeled_national.csv",
-    "training_sha256": "cab49d0b1925b69aa5bc64397c9e958d31c918a1c4f6898d2aa0ea16d36f948f",
+    "training_sha256": "16dfdbff1f3682deb5012d56e4474ef0de3e41f10a0aa6fa09a9e7165926cea7",
     "source_clean_file": "data/Capstone_Dataset_clean_national.csv",
-    "source_clean_sha256": "4cc7f89c73dec3385f11c31df299e33f5698a538d02ed984e38e1ed7104ebfe9",
-    "n_facilities": 454,
+    "source_clean_sha256": "faccb48533d9e797c988cf98d8bc0a96276935b46d3a32f1b7b37138df12067b",
+    "n_facilities": 457,
     "class_balance": {
-      "CCS Candidate": 368,
+      "CCS Candidate": 371,
       "Potential CU Candidate": 86
     }
   },
   "artifact": {
     "file": "registry/model_v3.pkl",
-    "sha256": "e8cdd2769e0af5127954181620c2e2d4584f1070350b873ca71341efa957b1d9"
+    "sha256": "9e9107460caac8277f9b1f20b3cff1374d26020bfd1c8d14ebed9b958e9bbe58"
   },
   "training_script": "scripts/12_train_v3.py",
-  "training_date": "2026-10-05",
-  "registered_date": "2026-10-05",
+  "training_date": "2026-10-06",
+  "registered_date": "2026-10-06",
   "lesson_spec": "AMII AI Pathways Technical Track, Capstone Project",
   "limitations": [
     "National screening heuristic: the 100kt cutoff is not a regulation outside Alberta; it is a large-emitter screen.",
