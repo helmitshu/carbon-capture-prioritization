@@ -385,10 +385,11 @@ def render_memo_pdf(html: str) -> bytes:
     """Render memo HTML to PDF bytes.
 
     Raises ImportError("weasyprint not installed") when WeasyPrint is
-    unavailable, so callers can fall back to the HTML download.
+    unavailable or its system libraries are missing, so callers can
+    fall back to the HTML download.
     """
     try:
         from weasyprint import HTML
-    except ImportError:
+    except (ImportError, OSError):
         raise ImportError("weasyprint not installed")
     return bytes(HTML(string=html).write_pdf())

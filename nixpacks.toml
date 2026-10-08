@@ -2,6 +2,7 @@
 # Installed via apt in the nixpacks setup phase. The memo HTML is text-only
 # (no SVG or raster images), so this is the minimal set: Pango/Cairo for
 # text layout and rendering, HarfBuzz for text shaping, libffi for cffi,
-# shared-mime-info and fontconfig for font discovery.
+# libglib for GObject (loaded via cffi at import time), shared-mime-info
+# and fontconfig for font discovery.
 [phases.setup]
-aptPkgs = ["libcairo2", "libpango-1.0-0", "libharfbuzz-subset0", "libffi-dev", "shared-mime-info", "fontconfig"]
+aptPkgs = ["libcairo2", "libpango-1.0-0", "libharfbuzz-subset0", "libffi-dev", "libglib2.0-0", "shared-mime-info", "fontconfig"]
