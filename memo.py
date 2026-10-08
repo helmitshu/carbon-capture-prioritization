@@ -11,6 +11,9 @@ the caller passes one in.
 from __future__ import annotations
 
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 from assumptions import assumption_value
 
@@ -390,6 +393,8 @@ def render_memo_pdf(html: str) -> bytes:
     """
     try:
         from weasyprint import HTML
-    except (ImportError, OSError):
+    except (ImportError, OSError) as e:
+        logger.warning("weasyprint unavailable, HTML fallback: %r", e)
         raise ImportError("weasyprint not installed")
+    return bytes(HTML(string=html).write_pdf())
     return bytes(HTML(string=html).write_pdf())
