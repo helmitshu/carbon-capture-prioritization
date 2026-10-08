@@ -80,7 +80,13 @@ _bundle, _card = _load_bundle()
 _tree = _bundle["model"]
 _features: list[str] = list(_bundle["features"])
 _labels: list[str] = list(_bundle["labels"])
-_encoder_classes: list[str] = [str(c) for c in _bundle["encoder"].classes_]
+_encoder = _bundle["encoder"]
+if hasattr(_encoder, "classes_"):
+    _encoder_classes: list[str] = [str(c) for c in _encoder.classes_]
+elif hasattr(_encoder, "categories_"):
+    _encoder_classes = [str(c) for c in _encoder.categories_]
+else:
+    raise RuntimeError("encoder exposes neither classes_ nor categories_")
 
 
 @app.get("/health")
