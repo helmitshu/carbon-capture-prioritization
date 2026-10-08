@@ -12,3 +12,6 @@ venv/
 
 # Streamlit secrets (if ever added): keep credentials out of git
 .streamlit/secrets.toml
+
+# API request log: appended per prediction, grows without bound
+logs/predictions.jsonl

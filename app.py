@@ -48,23 +48,51 @@ if _prev_version is not None and _prev_version != version_choice:
         st.session_state.pop(_k, None)
 st.session_state["_loaded_version"] = version_choice
 
+@st.cache_resource
+def _load_v3_bundle(path="model/model_v3.pkl"):
+    """Load the v3 model bundle once per process.
+
+    Cached: the bundle is a fixed build artifact. If the file is replaced
+    on disk, restart the app (or clear the Streamlit cache) to pick it up.
+    """
+    _bundle3 = joblib.load(path)
+    assert list(_bundle3["features"]) == FEATURES, "v3 feature schema drift"
+    return _bundle3["model"], _bundle3["encoder"]
+
+
+@st.cache_resource(ttl=300)
+def _get_tree_and_encoder():
+    """Resolve the v2 model once per process (API with local fallback).
+
+    The API-or-local decision is re-evaluated every 5 minutes instead of on
+    every rerun, so widget interactions do not pay for a health-check round
+    trip. Trade-off: if the API dies mid-session, the app keeps using the
+    cached source until the TTL expires or the session reloads.
+    """
+    return get_tree_and_encoder()
+
+
+@st.cache_data
+def _read_csv(path):
+    """Read a data CSV once per process (keyed on path)."""
+    return pd.read_csv(path)
+
+
 if IS_V3:
     # Staging preview only: always the local bundle, never the API.
-    _bundle3 = joblib.load("model/model_v3.pkl")
-    assert list(_bundle3["features"]) == FEATURES, "v3 feature schema drift"
-    tree, le = _bundle3["model"], _bundle3["encoder"]
+    tree, le = _load_v3_bundle()
     MODEL_SOURCE = "local (v3 staging)"
-    fac = pd.read_csv("model/facilities_v3.csv")
-    yearly = pd.read_csv("data/Capstone_Dataset_clean_national.csv")
+    fac = _read_csv("model/facilities_v3.csv")
+    yearly = _read_csv("data/Capstone_Dataset_clean_national.csv")
     META = {"n_facilities": len(fac),
             "n_facilities_total": int(yearly["facility_id"].nunique()),
             "n_yearly_rows": len(yearly)}
 else:
     # v2 production: served by the prediction API when reachable, with an
     # in-process fallback, so the app never goes down because the API does.
-    tree, le, MODEL_SOURCE = get_tree_and_encoder()
-    fac = pd.read_csv("model/facilities.csv")
-    yearly = pd.read_csv("data/Capstone_Dataset_clean.csv")
+    tree, le, MODEL_SOURCE = _get_tree_and_encoder()
+    fac = _read_csv("model/facilities.csv")
+    yearly = _read_csv("data/Capstone_Dataset_clean.csv")
     with open("model/meta.json", encoding="utf-8") as _mf:
         META = json.load(_mf)
 
@@ -103,7 +131,16 @@ def _v3_data_facts():
 # Model prediction for every facility, computed once. The Facilities table
 # shows this next to the rule-based label so the two never get mixed up.
 # One call (not predict+apply) so the remote path costs a single round trip.
-fac["model_prediction"], _startup_leaves = predict_batch(fac[FEATURES], tree)
+# Cached per (model version, model source): the tree and feature frame are
+# excluded from the cache key (underscore prefix) because Streamlit cannot
+# hash the remote-tree shim, and both are already fixed per version+source.
+@st.cache_data
+def _startup_predictions(version, source, _tree, _fac_features):
+    return predict_batch(_fac_features, _tree)
+
+
+fac["model_prediction"], _startup_leaves = _startup_predictions(
+    version_choice, MODEL_SOURCE, tree, fac[FEATURES])
 
 
 @st.cache_data
@@ -941,13 +978,16 @@ def leaf_card(leaf, row, path):
 
 
 # Preset walkthrough examples: a clean CCS case vs the trickiest CU case.
+# Leaf ids come from the startup batch call (_startup_leaves), not from a
+# per-row tree.apply: with the remote model each apply() is an HTTP POST,
+# so the old loop fired one request per facility on every rerun.
 def _walk_flags(r, leaf):
     return len(_flag_list(r, leaf))
 
 
 _CLEAR_ID, _TRICKY_ID, _best = None, None, -1
-for _i, _r in fac.iterrows():
-    _lf = int(tree.apply(_r[FEATURES].to_frame().T)[0])
+for _pos, (_i, _r) in enumerate(fac.iterrows()):
+    _lf = int(_startup_leaves[_pos])
     _p, _f = _r["model_prediction"], _walk_flags(_r, _lf)
     if _CLEAR_ID is None and _f == 0 and _p == "CCS Candidate":
         _CLEAR_ID = _r["facility_id"]

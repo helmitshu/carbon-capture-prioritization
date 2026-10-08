@@ -24,7 +24,7 @@ of truth. The per band detail:
   expenditures from April 28, 2026, in jurisdictions meeting the
   95% permanence rule.
 - Carbon price: federal benchmark revised May 15, 2026
-  (see memo.CARBON_PRICE_DECK).
+  (see assumptions.CARBON_PRICE_DECK).
 """
 from __future__ import annotations
 
