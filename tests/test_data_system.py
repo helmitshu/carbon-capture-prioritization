@@ -112,6 +112,9 @@ def test_gate_passes_clean_frame(tmp_path):
 
 def test_gate_quarantines_bad_rows_with_reasons(tmp_path):
     df = _synthetic(1000)
+    # pandas 3 no longer upcasts a float column on str assignment (raises
+    # TypeError), so widen the column first; the gate must still catch it.
+    df["co2"] = df["co2"].astype(object)
     df.loc[0, "facility_id"] = None            # null id
     df.loc[1, "year"] = 1999                   # out of range
     df.loc[2, "year"] = 2024                   # future vs release
