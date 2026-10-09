@@ -19,6 +19,7 @@ from features import (CO2_CUTOFF, FEATURES, encoder_categories,
 from memo_onepage import (render_onepage_memo_html,
                           render_onepage_memo_pdf)
 from model_client import get_tree_and_encoder, predict_batch
+import bd_toolkit
 
 GHGRP_URL = "https://open.canada.ca/data/en/dataset/a8ba14b7-7f23-462a-bdbb-83b0ef629823"
 TIER_URL = "https://www.alberta.ca/technology-innovation-and-emissions-reduction-regulation"
@@ -1403,3 +1404,34 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# BD Toolkit: origination tools for carbon capture developers. They read the
+# same screening data as the tabs above. Estimates are labeled where they
+# appear. The logic lives in bd_toolkit.py, these wrappers stay thin.
+# ---------------------------------------------------------------------------
+st.divider()
+st.subheader("BD Toolkit")
+st.write("Origination tools for carbon capture developers. They read the "
+         "same screening data as the tabs above. Estimates are labeled "
+         "where they appear.")
+
+_bd_owners, _bd_readiness, _bd_scenarios, _bd_outreach, _bd_watch = st.tabs(
+    ["Owner Portfolios", "Readiness", "Scenario Lab", "Outreach Kit",
+     "Watchlist"])
+
+with _bd_owners:
+    bd_toolkit.render_owner_portfolios(fac)
+
+with _bd_readiness:
+    bd_toolkit.render_readiness(fac)
+
+with _bd_scenarios:
+    bd_toolkit.render_scenario_lab(fac)
+
+with _bd_outreach:
+    bd_toolkit.render_outreach_kit(fac)
+
+with _bd_watch:
+    bd_toolkit.render_watchlist(fac)
