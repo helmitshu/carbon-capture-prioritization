@@ -16,7 +16,8 @@ import streamlit as st
 
 from features import (CO2_CUTOFF, FEATURES, encoder_categories,
                       encoder_kind, encoder_values)
-from memo import render_memo_html, render_memo_pdf
+from memo_onepage import (render_onepage_memo_html,
+                          render_onepage_memo_pdf)
 from model_client import get_tree_and_encoder, predict_batch
 
 GHGRP_URL = "https://open.canada.ca/data/en/dataset/a8ba14b7-7f23-462a-bdbb-83b0ef629823"
@@ -486,43 +487,21 @@ def _assumptions_panel():
 
 
 def _memo_section(row, val_fn, reasons):
-    """One-click screening memo for a facility row. Pure memo.py underneath."""
+    """One-click screening memo for a facility row.
+
+    One-page boardroom memo (memo_onepage): the answer first, real data,
+    charts from the same economics engine as the app.
+    """
     st.write("**Screening memo**")
-    op = val_fn("company_trade")
-    if op == "Not reported":
-        op = val_fn("company_legal")
-    facility = {
-        "facility_name": str(row["facility_name"]),
-        "city": str(val_fn("city")),
-        "province": (str(row["province"])
-                     if "province" in row.index and pd.notna(row["province"])
-                     else "Alberta"),
-        "operator": str(op),
-        "sector": str(row["sector"]),
-        "avg_annual_emissions": float(row["avg_annual_emissions"]),
-        "co2_share": float(row["co2_share"]),
-        "years_reported": int(row["years_reported"]),
-        "priority": str(row["priority"]),
-        "model_prediction": str(row["model_prediction"]),
-        "data_through": str(int(yearly["year"].max())),
-    }
-    tier = (str(row["verdict_tier"])
-            if "verdict_tier" in row.index and pd.notna(row["verdict_tier"])
-            else "")
-    votes_raw = row["panel_ccs_votes"] if "panel_ccs_votes" in row.index else 0
-    votes = int(votes_raw) if pd.notna(votes_raw) else 0
     mkey = f"memo_html_{row['facility_id']}"
     if st.button("Generate screening memo",
                  key=f"genmemo_{row['facility_id']}"):
-        st.session_state[mkey] = render_memo_html(
-            facility, reasons, tier, votes,
-            economics="v31" if IS_V3 else "legacy")
+        st.session_state[mkey] = render_onepage_memo_html(row)
     if mkey in st.session_state:
         pkey = mkey + "__pdf"
         if pkey not in st.session_state:
             try:
-                st.session_state[pkey] = render_memo_pdf(
-                    st.session_state[mkey])
+                st.session_state[pkey] = render_onepage_memo_pdf(row)
             except ImportError:
                 st.session_state[pkey] = None
         pdf = st.session_state[pkey]
