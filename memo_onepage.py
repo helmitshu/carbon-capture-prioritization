@@ -67,10 +67,10 @@ _CSS = """
 * { box-sizing: border-box; }
 body { font-family: Helvetica, Arial, sans-serif; color: #1e293b;
        font-size: 9pt; line-height: 1.45; margin: 0; }
-.accent { height: 4px; background: #0d9488; margin: 0 0 10px 0; }
-.brand-row { display: table; margin-bottom: 3px; }
-.brand-logo { display: table-cell; height: 30px; width: auto;
-              vertical-align: middle; padding-right: 10px; }
+.accent { height: 4px; background: #0d9488; margin: 0 0 8px 0; }
+.brand-row { display: table; margin-bottom: 2px; }
+.brand-logo { display: table-cell; height: 24px; width: auto;
+              vertical-align: middle; padding-right: 8px; }
 .brand-kicker { display: table-cell; vertical-align: middle;
                 font-size: 8pt; letter-spacing: 2.5px; color: #0d9488;
                 font-weight: bold; }
@@ -91,7 +91,7 @@ h1 { font-size: 20pt; margin: 0 0 2px 0; color: #0f172a; letter-spacing: 0.3px; 
 .verdict-p { font-size: 9.5pt; line-height: 1.5; margin: 0 0 10px 0;
              color: #1e293b; }
 .section-title { font-size: 8pt; letter-spacing: 1.8px; color: #0d9488;
-                 font-weight: bold; margin: 8px 0 5px 0;
+                 font-weight: bold; margin: 6px 0 4px 0;
                  border-bottom: 1px solid #e2e8f0; padding-bottom: 3px; }
 .charts { display: table; width: 100%; table-layout: fixed; }
 .chart-cell { display: table-cell; vertical-align: middle; text-align: center;
@@ -196,7 +196,7 @@ def render_onepage_memo_html(row) -> str:
     cost_b64 = _fig_to_base64(cost_fig)
     from econ_charts import emissions_trend_chart
     try:
-        trend_fig = emissions_trend_chart(facility_id, figsize=(8.5, 1.7),
+        trend_fig = emissions_trend_chart(facility_id, figsize=(8.5, 1.55),
                                           show_title=False)
         trend_b64 = _fig_to_base64(trend_fig)
         trend_section = f"""
