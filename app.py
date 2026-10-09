@@ -24,6 +24,7 @@ GHGRP_URL = "https://open.canada.ca/data/en/dataset/a8ba14b7-7f23-462a-bdbb-83b0
 TIER_URL = "https://www.alberta.ca/technology-innovation-and-emissions-reduction-regulation"
 
 st.set_page_config(page_title="CCS Priority Screening", layout="wide")
+st.logo("assets/sentinel-logo.jpg")
 
 # Model version switcher. The default comes from DEFAULT_MODEL_VERSION
 # ("v2" unless set to "v3"): the production service keeps the v2 default

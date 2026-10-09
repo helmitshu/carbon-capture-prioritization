@@ -36,6 +36,19 @@ def _fig_to_base64(fig, size=None) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def _brand_logo_b64() -> str:
+    """Sentinel logo for the memo header, empty string if missing."""
+    import os
+
+    for p in ("assets/sentinel-logo.jpg",
+              os.path.join(os.path.dirname(__file__),
+                           "assets/sentinel-logo.jpg")):
+        if os.path.exists(p):
+            with open(p, "rb") as fh:
+                return base64.b64encode(fh.read()).decode("ascii")
+    return ""
+
+
 def _fmt_money(cad: float) -> str:
     a = abs(cad)
     if a >= 1e9:
@@ -55,6 +68,12 @@ _CSS = """
 body { font-family: Helvetica, Arial, sans-serif; color: #1e293b;
        font-size: 9pt; line-height: 1.45; margin: 0; }
 .accent { height: 4px; background: #0d9488; margin: 0 0 10px 0; }
+.brand-row { display: table; margin-bottom: 3px; }
+.brand-logo { display: table-cell; height: 30px; width: auto;
+              vertical-align: middle; padding-right: 10px; }
+.brand-kicker { display: table-cell; vertical-align: middle;
+                font-size: 8pt; letter-spacing: 2.5px; color: #0d9488;
+                font-weight: bold; }
 .kicker { font-size: 8pt; letter-spacing: 2.5px; color: #0d9488;
           font-weight: bold; margin-bottom: 2px; }
 h1 { font-size: 20pt; margin: 0 0 2px 0; color: #0f172a; letter-spacing: 0.3px; }
@@ -176,9 +195,17 @@ def render_onepage_memo_html(row) -> str:
                                fontweight="bold", color="#0f172a")
     cost_b64 = _fig_to_base64(cost_fig)
     from econ_charts import emissions_trend_chart
-    trend_fig = emissions_trend_chart(facility_id, figsize=(8.5, 1.7),
-                                      show_title=False)
-    trend_b64 = _fig_to_base64(trend_fig)
+    try:
+        trend_fig = emissions_trend_chart(facility_id, figsize=(8.5, 1.7),
+                                          show_title=False)
+        trend_b64 = _fig_to_base64(trend_fig)
+        trend_section = f"""
+<div class="section-title">THE TREND</div>
+<div class="chart-cell trend"><img src="data:image/png;base64,{trend_b64}"></div>
+<div class="trend-note">{years} years of reported emissions with the long-run trend. A rising or flat stream supports a capture case; a falling one means the project chases a shrinking target.</div>
+"""
+    except ValueError:
+        trend_section = ""
 
     verdict_p = (
         f"<b>{name} is the largest capturable CO2 stream in the screen: "
@@ -210,15 +237,23 @@ def render_onepage_memo_html(row) -> str:
     date_str = datetime.datetime.now(ZoneInfo("America/Vancouver")).strftime(
         "%B %d, %Y")
 
+    logo_b64 = _brand_logo_b64()
+    brand_row = (f"""
+<div class="brand-row">
+  <img class="brand-logo" src="data:image/jpeg;base64,{logo_b64}">
+  <div class="brand-kicker">CARBON CAPTURE ORIGINATION</div>
+</div>""" if logo_b64 else
+        '<div class="kicker">CARBON CAPTURE ORIGINATION</div>')
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Opportunity Memo, {name}</title>
 <style>{_CSS}</style></head>
 <body>
 <div class="accent"></div>
+{brand_row}
 <div class="head-row">
   <div class="head-left">
-    <div class="kicker">CARBON CAPTURE ORIGINATION</div>
     <h1>Opportunity Memo</h1>
     <div class="facility-line">{name} &middot; {operator} &middot; {city}, {province}<br>{sector} &middot; {years} years of reported data</div>
   </div>
@@ -244,10 +279,7 @@ def render_onepage_memo_html(row) -> str:
   <div class="num-cell"><div class="num-val {margin_cls}">{_fmt_money(margin_base)}</div><div class="num-label">BASE MARGIN VS BILL</div></div>
 </div>
 
-<div class="section-title">THE TREND</div>
-<div class="chart-cell trend"><img src="data:image/png;base64,{trend_b64}"></div>
-<div class="trend-note">{years} years of reported emissions with the long-run trend. A rising or flat stream supports a capture case; a falling one means the project chases a shrinking target.</div>
-
+{trend_section}
 <div class="section-title">WHAT COULD KILL IT</div>
 <ul class="risks">
   <li>{risk_hinge}</li>
