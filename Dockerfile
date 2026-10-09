@@ -14,7 +14,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 \
     libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libharfbuzz0b \
     libharfbuzz-subset0 \
+    libfontconfig1 \
     libffi8 \
     libglib2.0-0 \
     shared-mime-info \
