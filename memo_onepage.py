@@ -72,7 +72,7 @@ h1 { font-size: 20pt; margin: 0 0 2px 0; color: #0f172a; letter-spacing: 0.3px; 
 .verdict-p { font-size: 9.5pt; line-height: 1.5; margin: 0 0 10px 0;
              color: #1e293b; }
 .section-title { font-size: 8pt; letter-spacing: 1.8px; color: #0d9488;
-                 font-weight: bold; margin: 10px 0 6px 0;
+                 font-weight: bold; margin: 8px 0 5px 0;
                  border-bottom: 1px solid #e2e8f0; padding-bottom: 3px; }
 .charts { display: table; width: 100%; table-layout: fixed; }
 .chart-cell { display: table-cell; vertical-align: middle; text-align: center;
@@ -176,7 +176,7 @@ def render_onepage_memo_html(row) -> str:
                                fontweight="bold", color="#0f172a")
     cost_b64 = _fig_to_base64(cost_fig)
     from econ_charts import emissions_trend_chart
-    trend_fig = emissions_trend_chart(facility_id, figsize=(8.5, 1.9),
+    trend_fig = emissions_trend_chart(facility_id, figsize=(8.5, 1.7),
                                       show_title=False)
     trend_b64 = _fig_to_base64(trend_fig)
 
