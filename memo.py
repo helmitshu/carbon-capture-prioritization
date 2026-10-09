@@ -10,11 +10,8 @@ the caller passes one in.
 """
 from __future__ import annotations
 
-import ctypes.util
 import datetime
-import glob
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -397,15 +394,7 @@ def render_memo_pdf(html: str) -> bytes:
     try:
         from weasyprint import HTML
     except (ImportError, OSError) as e:
-        logger.warning(
-            "weasyprint unavailable, HTML fallback: %r | so_exists=%s "
-            "find_library=%s glob=%s",
-            e,
-            os.path.exists("/usr/lib/x86_64-linux-gnu/libgobject-2.0.so.0"),
-            ctypes.util.find_library("gobject-2.0"),
-            glob.glob("/usr/lib/*/libgobject*")
-            + glob.glob("/lib/*/libgobject*"),
-        )
+        logger.warning("weasyprint unavailable, HTML fallback: %r", e)
         raise ImportError("weasyprint not installed")
     return bytes(HTML(string=html).write_pdf())
     return bytes(HTML(string=html).write_pdf())
