@@ -465,22 +465,25 @@ def _econ_charts(row):
 
 
 def _trend_chart(row):
-    """v3-only 20-year reported emissions trend on the Screening detail.
+    """v3-only emissions history plus 10-year projection, Screening detail.
 
-    Annual bars plus the long-run trend direction. A falling stream is
-    a warning: the capture case chases a shrinking target.
+    Reported annual bars with the long-run trend, then the damped-trend
+    projection with calibrated uncertainty bands. The projection is an
+    illustrative scenario, never a forecast; regime breaks get flagged.
     """
-    from econ_charts import emissions_trend_chart
+    from econ_charts import emissions_trend_projection_chart
     try:
-        fig = emissions_trend_chart(str(row["facility_id"]))
+        fig = emissions_trend_projection_chart(str(row["facility_id"]))
     except ValueError:
         return
     st.pyplot(fig)
     plt.close(fig)
     st.caption("Reported annual emissions from the public record, with "
-               "the long-run trend. Rising or flat supports a capture "
-               "case; falling means the project chases less CO2 every "
-               "year.")
+               "the 10-year projection as an illustrative scenario, not "
+               "a forecast. Bands are calibrated to backtest coverage. "
+               "A regime-change flag means recent years look nothing "
+               "like older history: treat that projection as low "
+               "confidence.")
 
 
 def _assumptions_panel():

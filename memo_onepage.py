@@ -49,6 +49,29 @@ def _brand_logo_b64() -> str:
     return ""
 
 
+def _trend_bill_line(facility_id: str, sector: str, co2_share: float) -> str:
+    """One-liner: the 2030 carbon bill if emissions follow the trend.
+
+    Empty string when the projection is low-confidence (regime break)
+    or history is too short. The figure is an illustrative scenario,
+    consistent with the memo's labeling.
+    """
+    try:
+        from emission_forecast import forecast_emissions
+        from economics import facility_economics
+
+        fc = forecast_emissions(facility_id, horizon=10)
+        if fc["break_flag"] or 2030 not in fc["years"]:
+            return ""
+        proj_2030_t = fc["point_mt"][fc["years"].index(2030)] * 1e6
+        e2030 = facility_economics(proj_2030_t, sector, co2_share=co2_share)
+        bill = e2030["abatable_liability_2030_cad"]
+        return f" On the trend path, the 2030 carbon bill would be " \
+               f"{_fmt_money(bill)}."
+    except (ValueError, KeyError):
+        return ""
+
+
 def _fmt_money(cad: float) -> str:
     a = abs(cad)
     if a >= 1e9:
@@ -199,10 +222,11 @@ def render_onepage_memo_html(row) -> str:
         trend_fig = emissions_trend_chart(facility_id, figsize=(8.5, 1.55),
                                           show_title=False)
         trend_b64 = _fig_to_base64(trend_fig)
+        trend_bill_line = _trend_bill_line(facility_id, sector, co2_share)
         trend_section = f"""
 <div class="section-title">THE TREND</div>
 <div class="chart-cell trend"><img src="data:image/png;base64,{trend_b64}"></div>
-<div class="trend-note">{years} years of reported emissions with the long-run trend. A rising or flat stream supports a capture case; a falling one means the project chases a shrinking target.</div>
+<div class="trend-note">{years} years of reported emissions with the long-run trend. A rising or flat stream supports a capture case; a falling one means the project chases a shrinking target.{trend_bill_line}</div>
 """
     except ValueError:
         trend_section = ""

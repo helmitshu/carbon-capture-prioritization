@@ -159,3 +159,89 @@ def emissions_trend_chart(facility_id: str, years: int = 20,
         ax.spines[spine].set_visible(False)
     fig.tight_layout()
     return fig
+
+
+def _history_for_chart(facility_id: str):
+    import pandas as pd
+
+    try:
+        y = pd.read_csv("data/Capstone_Dataset_clean_national.csv")
+    except FileNotFoundError:
+        y = pd.read_csv("data/Capstone_Dataset_clean.csv")
+    g = y[y["facility_id"] == str(facility_id)].sort_values("year")
+    hist = g[["year", "total_emissions"]].dropna().tail(20)
+    if len(hist) < 2:
+        raise ValueError(f"not enough history for {facility_id}")
+    return hist
+
+
+def _name_for_chart(facility_id: str) -> str:
+    import pandas as pd
+
+    try:
+        fac = pd.read_csv("model/facilities_v3.csv")
+    except FileNotFoundError:
+        return str(facility_id)
+    m = fac[fac["facility_id"] == str(facility_id)]
+    if len(m):
+        return str(m.iloc[0]["facility_name"])
+    return str(facility_id)
+
+
+def emissions_trend_projection_chart(facility_id: str, horizon: int = 10,
+                                     figsize=(8.5, 3.8)):
+    """20-year reported bars plus a 10-year damped-trend projection.
+
+    Projection is an illustrative scenario, not a forecast: damped trend
+    with calibrated uncertainty bands. Facilities flagged with a regime
+    break get a visible low-confidence warning.
+    """
+    import numpy as np
+
+    from emission_forecast import forecast_emissions
+
+    fc = forecast_emissions(facility_id, horizon=horizon)
+    hist = _history_for_chart(facility_id)
+    yrs = hist["year"].to_numpy()
+    mt = hist["total_emissions"].to_numpy() / 1e6
+    name = _name_for_chart(facility_id)
+
+    pyrs = np.array(fc["years"])
+    pmt = np.array(fc["point_mt"])
+    lo = np.array(fc["lower_mt"])
+    hi = np.array(fc["upper_mt"])
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.bar(yrs, mt, color=_TEAL, width=0.7, zorder=3, label="Reported")
+    ax.plot(pyrs, pmt, color=_AMBER, linestyle="--", linewidth=2,
+            label="Projection (illustrative)")
+    ax.fill_between(pyrs, lo, hi, color=_AMBER, alpha=0.18,
+                    label="Uncertainty band")
+    ax.axvline(yrs[-1] + 0.5, color="#94a3b8", linestyle=":", linewidth=1.2)
+    top = max(mt.max(), hi.max()) * 1.02
+    ax.set_ylim(0, top)
+    ax.text(yrs[-1] + 0.5, top * 0.97, "  today",
+            fontsize=9, color="#64748b", va="top")
+    if fc["break_flag"]:
+        ax.text(0.02, 0.96, "Regime change: recent years look nothing "
+                "like older history. Treat this projection as low "
+                "confidence.", transform=ax.transAxes, fontsize=8,
+                color="#b45309", va="top", ha="left",
+                bbox=dict(boxstyle="round,pad=0.3", fc="#fef3c7", ec="none"))
+    ax.set_title(f"{name}", fontsize=12, fontweight="bold", color=_INK,
+                 loc="left", pad=10)
+    ax.set_xlabel("Year", fontsize=10)
+    ax.set_ylabel("Mt CO2e per year", fontsize=10)
+    ax.set_xticks(np.concatenate([yrs[::4], pyrs[::5]]).astype(int))
+    ax.legend(fontsize=9, frameon=False,
+              loc="upper right" if fc["break_flag"] else "upper left")
+    ax.tick_params(labelsize=9)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    fig.text(0.01, -0.02,
+             "Projection: damped trend on reported history, bands "
+             "calibrated to ~68% backtest coverage. Illustrative scenario, "
+             "not a forecast.",
+             fontsize=7.5, color="#94a3b8", ha="left")
+    fig.tight_layout()
+    return fig
