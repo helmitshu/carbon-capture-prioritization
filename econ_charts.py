@@ -108,7 +108,12 @@ def emissions_trend_chart(facility_id: str, years: int = 20,
     import numpy as np
     import pandas as pd
 
-    y = pd.read_csv("data/Capstone_Dataset_clean.csv")
+    # Same yearly source the v3 app reads; fall back to the older file.
+    yearly_path = "data/Capstone_Dataset_clean_national.csv"
+    try:
+        y = pd.read_csv(yearly_path)
+    except FileNotFoundError:
+        y = pd.read_csv("data/Capstone_Dataset_clean.csv")
     g = y[y["facility_id"] == str(facility_id)].sort_values("year")
     hist = g[["year", "total_emissions"]].dropna().tail(years)
     if len(hist) < 2:
