@@ -1034,10 +1034,13 @@ padding:14px 16px;margin:12px 0;}}
 """, unsafe_allow_html=True)
 
 
-tab_about, tab_how, tab_screen, tab_facilities = st.tabs(
-    ["About", "How it works", "Screening", "Facilities"])
+# Single navigation. One menu in the sidebar, one tool on screen at a time.
+# Simple on purpose: the user picks where to go, the page shows only that.
+NAV_ITEMS = ["Screening", "Facilities", "Owner Portfolios", "Readiness",
+             "Scenario Lab", "Outreach Kit", "Watchlist", "About"]
+nav = st.sidebar.radio("Go to", NAV_ITEMS, index=0, key="main_nav")
 
-with tab_about:
+if nav == "About":
     st.subheader("What this is")
     if IS_V3:
         st.write("Carbon capture can trap CO2 before it reaches the air, but "
@@ -1176,7 +1179,7 @@ with tab_about:
                  "original lives with the government source [1].")
     references()
 
-with tab_how:
+    st.divider()
     st.subheader("The model, visually")
     st.write("This is the part that makes it a model and not a filter. Raw data "
              "flows through a pipeline, and every facility walks down a decision "
@@ -1230,7 +1233,7 @@ with tab_how:
             reason_card(wk["cards"][j][0], wk["cards"][j][1], j + 1, len(wk["cards"]))
         leaf_card(wk["leaf"], wrow, wk["path"])
 
-with tab_screen:
+if nav == "Screening":
     _region = "a Canadian" if IS_V3 else "an Alberta"
     st.write(f"Pick {_region} industrial facility to see whether it screens as a "
              "carbon capture candidate or a carbon utilization candidate, and why. "
@@ -1323,7 +1326,7 @@ with tab_screen:
         _assumptions_panel()
     _memo_section(row, _screen_val, screen_reasons)
 
-with tab_facilities:
+if nav == "Facilities":
     st.write("Every screened facility, with its data source, the rule-based "
              "result, and the model prediction side by side. All figures "
              "come from Environment and Climate Change Canada's Greenhouse Gas "
@@ -1407,31 +1410,20 @@ st.markdown("""
 
 
 # ---------------------------------------------------------------------------
-# BD Toolkit: origination tools for carbon capture developers. They read the
-# same screening data as the tabs above. Estimates are labeled where they
-# appear. The logic lives in bd_toolkit.py, these wrappers stay thin.
+# BD Toolkit: origination tools for carbon capture developers. The logic
+# lives in bd_toolkit.py, these wrappers stay thin.
 # ---------------------------------------------------------------------------
-st.divider()
-st.subheader("BD Toolkit")
-st.write("Origination tools for carbon capture developers. They read the "
-         "same screening data as the tabs above. Estimates are labeled "
-         "where they appear.")
-
-_bd_owners, _bd_readiness, _bd_scenarios, _bd_outreach, _bd_watch = st.tabs(
-    ["Owner Portfolios", "Readiness", "Scenario Lab", "Outreach Kit",
-     "Watchlist"])
-
-with _bd_owners:
+if nav == "Owner Portfolios":
     bd_toolkit.render_owner_portfolios(fac)
 
-with _bd_readiness:
+if nav == "Readiness":
     bd_toolkit.render_readiness(fac)
 
-with _bd_scenarios:
+if nav == "Scenario Lab":
     bd_toolkit.render_scenario_lab(fac)
 
-with _bd_outreach:
+if nav == "Outreach Kit":
     bd_toolkit.render_outreach_kit(fac)
 
-with _bd_watch:
+if nav == "Watchlist":
     bd_toolkit.render_watchlist(fac)
