@@ -1,0 +1,5 @@
+name,type,lat,lon,source,note
+Quest CCS,ccs_site,53.77,-113.08,"Shell Canada public project materials, Scotford upgrader near Fort Saskatchewan","Approximate public location, estimate"
+Alberta Carbon Trunk Line origin,trunk_line,53.71,-113.21,"Alberta Carbon Trunk Line public route maps, Enhance Energy","Approximate corridor point, estimate"
+Alberta Carbon Trunk Line terminus,trunk_line,52.48,-113.45,"Alberta Carbon Trunk Line public route maps, Enhance Energy","Approximate corridor point near Clive, estimate"
+Pathways Alliance storage hub,ccs_site,54.47,-110.18,"Pathways Alliance public announcements, proposed storage hub near Cold Lake","Approximate public location, proposed, estimate"
