@@ -157,13 +157,14 @@ def test_screening_tab_detail_calls_memo_section():
     The memo section used to exist only in facility_profile (Facilities tab),
     so the primary detail view had no 'Generate screening memo' button.
     Static check on app.py source: _memo_section must be invoked inside the
-    Screening tab block (between 'with tab_screen' and 'with tab_facilities').
+    Screening section (between 'if nav == "Screening":' and
+    'if nav == "Facilities":').
     """
     import pathlib
     src = pathlib.Path(__file__).resolve().parent.parent.joinpath(
         "app.py").read_text()
-    start = src.index("with tab_screen:")
-    end = src.index("with tab_facilities:")
+    start = src.index('if nav == "Screening":')
+    end = src.index('if nav == "Facilities":')
     screening_block = src[start:end]
     assert "_memo_section(" in screening_block, (
         "Screening tab detail view does not call _memo_section")
@@ -174,8 +175,8 @@ def test_screening_tab_detail_shows_tier_badge():
     import pathlib
     src = pathlib.Path(__file__).resolve().parent.parent.joinpath(
         "app.py").read_text()
-    start = src.index("with tab_screen:")
-    end = src.index("with tab_facilities:")
+    start = src.index('if nav == "Screening":')
+    end = src.index('if nav == "Facilities":')
     screening_block = src[start:end]
     assert "tier_badge(row)" in screening_block, (
         "Screening tab detail view does not show the tier badge")
