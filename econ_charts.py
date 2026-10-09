@@ -95,3 +95,62 @@ def cost_band_chart(avg_annual_emissions: float, sector: str,
         ax.spines[spine].set_visible(False)
     fig.tight_layout()
     return fig
+
+
+def emissions_trend_chart(facility_id: str, years: int = 20,
+                          figsize=(8.5, 3.8), show_title: bool = True):
+    """Annual reported emissions bars plus a trend line, last N years.
+
+    One value per reported year, so bars are the honest format
+    (candlesticks need intra-period ranges the records do not have).
+    Real records only; no projection here.
+    """
+    import numpy as np
+    import pandas as pd
+
+    y = pd.read_csv("data/Capstone_Dataset_clean.csv")
+    g = y[y["facility_id"] == str(facility_id)].sort_values("year")
+    hist = g[["year", "total_emissions"]].dropna().tail(years)
+    if len(hist) < 2:
+        raise ValueError(f"not enough history for {facility_id}")
+    yrs = hist["year"].to_numpy()
+    mt = hist["total_emissions"].to_numpy() / 1e6
+    name = str(g.iloc[0]["facility_name"])
+    try:
+        op = str(g.iloc[0]["company_trade"])
+    except Exception:
+        op = ""
+
+    coef = np.polyfit(yrs, mt, 1)
+    trend = np.polyval(coef, yrs)
+    direction = "rising" if coef[0] > 0.02 else (
+        "falling" if coef[0] < -0.02 else "flat")
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.bar(yrs, mt, color=_TEAL, width=0.7, zorder=3)
+    ax.plot(yrs, trend, color=_AMBER, linestyle="--", linewidth=1.8,
+            label=f"Trend ({direction})")
+    if show_title:
+        ax.set_title(f"{name}", fontsize=12, fontweight="bold", color=_INK,
+                     loc="left", pad=26)
+        ax.text(0, 1.015,
+                f"{op}  |  {len(hist)} years of reported emissions" if op
+                else f"{len(hist)} years of reported emissions",
+                transform=ax.transAxes, fontsize=9, color="#64748b",
+                va="bottom", ha="left")
+    ax.set_xlabel("Year", fontsize=10)
+    ax.set_ylabel("Mt CO2e per year", fontsize=10)
+    ax.set_xticks(yrs[::2].astype(int))
+    ax.legend(fontsize=9, frameon=False, loc="upper left")
+    ax.tick_params(labelsize=9)
+    if not show_title:
+        # Compact mode for the one-page memo: smaller type, no x label.
+        ax.set_xlabel("")
+        ax.set_ylabel("Mt CO2e/yr", fontsize=8)
+        ax.tick_params(labelsize=7)
+        for t in ax.get_legend().get_texts():
+            t.set_fontsize(7)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    fig.tight_layout()
+    return fig

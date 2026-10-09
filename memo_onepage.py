@@ -78,6 +78,10 @@ h1 { font-size: 20pt; margin: 0 0 2px 0; color: #0f172a; letter-spacing: 0.3px; 
 .chart-cell { display: table-cell; vertical-align: middle; text-align: center;
               padding: 0 6px; }
 .chart-cell img { height: 148px; width: auto; max-width: 100%; }
+.chart-cell.trend { display: block; text-align: center; padding: 0; }
+.chart-cell.trend img { height: auto; width: 100%; max-width: 100%; }
+.trend-note { font-size: 8pt; color: #64748b; margin: 4px 0 0 0;
+              line-height: 1.45; }
 .numbers { display: table; width: 100%; table-layout: fixed; margin-top: 2px; }
 .num-cell { display: table-cell; text-align: center; padding: 6px 4px;
             border-left: 1px solid #e2e8f0; }
@@ -171,6 +175,10 @@ def render_onepage_memo_html(row) -> str:
     cost_fig.axes[0].set_title("Capture cost vs carbon price", fontsize=12,
                                fontweight="bold", color="#0f172a")
     cost_b64 = _fig_to_base64(cost_fig)
+    from econ_charts import emissions_trend_chart
+    trend_fig = emissions_trend_chart(facility_id, figsize=(8.5, 1.9),
+                                      show_title=False)
+    trend_b64 = _fig_to_base64(trend_fig)
 
     verdict_p = (
         f"<b>{name} is the largest capturable CO2 stream in the screen: "
@@ -235,6 +243,10 @@ def render_onepage_memo_html(row) -> str:
   <div class="num-cell"><div class="num-val">{_fmt_money(net_capex)}</div><div class="num-label">NET CAPEX AFTER ITC</div></div>
   <div class="num-cell"><div class="num-val {margin_cls}">{_fmt_money(margin_base)}</div><div class="num-label">BASE MARGIN VS BILL</div></div>
 </div>
+
+<div class="section-title">THE TREND</div>
+<div class="chart-cell trend"><img src="data:image/png;base64,{trend_b64}"></div>
+<div class="trend-note">{years} years of reported emissions with the long-run trend. A rising or flat stream supports a capture case; a falling one means the project chases a shrinking target.</div>
 
 <div class="section-title">WHAT COULD KILL IT</div>
 <ul class="risks">

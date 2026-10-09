@@ -463,6 +463,25 @@ def _econ_charts(row):
                "only on the CO2 fraction of emissions.")
 
 
+def _trend_chart(row):
+    """v3-only 20-year reported emissions trend on the Screening detail.
+
+    Annual bars plus the long-run trend direction. A falling stream is
+    a warning: the capture case chases a shrinking target.
+    """
+    from econ_charts import emissions_trend_chart
+    try:
+        fig = emissions_trend_chart(str(row["facility_id"]))
+    except ValueError:
+        return
+    st.pyplot(fig)
+    plt.close(fig)
+    st.caption("Reported annual emissions from the public record, with "
+               "the long-run trend. Rising or flat supports a capture "
+               "case; falling means the project chases less CO2 every "
+               "year.")
+
+
 def _assumptions_panel():
     """Visible assumptions and sources for the v3 economics layer.
 
@@ -1295,6 +1314,7 @@ with tab_screen:
     if IS_V3:
         _econ_summary(row)
         _econ_charts(row)
+        _trend_chart(row)
         _assumptions_panel()
     _memo_section(row, _screen_val, screen_reasons)
 
